@@ -4,6 +4,25 @@
 
 ---
 
+## [2026-01-29] - Chrome Extension Image Capture Fix
+
+### Fixed
+
+**Image capture from any website**
+- Added `<all_urls>` host permission to fetch images from any domain
+- Implemented 3-tier fallback for image capture:
+  1. Direct fetch with CORS mode (works for CORS-enabled images)
+  2. Canvas capture via content script (bypasses CORS)
+  3. No-cors fetch as last resort
+- Better error messages when all methods fail
+
+### Files Modified
+- `3rd-party/chrome/manifest.json` - Added `<all_urls>` permission
+- `3rd-party/chrome/background.js` - Multi-method captureImage with fallbacks
+- `3rd-party/chrome/content.js` - Added captureImageViaCanvas() function
+
+---
+
 ## [2026-01-29] - Mobile App UI Improvements & PWA Icons
 
 ### Added
