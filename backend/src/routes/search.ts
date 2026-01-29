@@ -1,7 +1,7 @@
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import { searchService, type FacetedSearchParams } from '../services/search.js';
 
-export const searchRouter = Router();
+export const searchRouter: RouterType = Router();
 
 // Faceted search with filters
 searchRouter.get('/', async (req, res) => {

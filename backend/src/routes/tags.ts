@@ -1,9 +1,9 @@
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import { tagsService } from '../services/tags.js';
 import { postsService } from '../services/posts.js';
 import type { CreateTagRequest } from '../types.js';
 
-export const tagsRouter = Router();
+export const tagsRouter: RouterType = Router();
 
 // Create tag
 tagsRouter.post('/', async (req, res) => {

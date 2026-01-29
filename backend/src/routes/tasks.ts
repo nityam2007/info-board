@@ -1,9 +1,9 @@
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import { tasksService } from '../services/tasks.js';
 import { postsService } from '../services/posts.js';
 import type { CreateTaskRequest, UpdateTaskRequest } from '../types.js';
 
-export const tasksRouter = Router();
+export const tasksRouter: RouterType = Router();
 
 // Create task
 tasksRouter.post('/', async (req, res) => {

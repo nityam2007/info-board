@@ -32,7 +32,7 @@ router.post('/endpoint', async (req, res) => {
 - Stream large responses
 - Target: 1vCPU / 2GB RAM
 
-**Forbidden:** ❌ Sync operations, ❌ Direct DB in handlers, ❌ Cloud services
+**Forbidden:** Sync operations, Direct DB in handlers, Cloud services
 
 ---
 
@@ -43,8 +43,8 @@ router.post('/endpoint', async (req, res) => {
 **Tech:**
 - Svelte 5 with runes (`$state`, `$derived`, `$props`, `$effect`)
 - Plain Svelte + Vite (NOT SvelteKit)
-- Tailwind CSS, lucide-svelte icons
-- DOM-based tiles (not Canvas API)
+- CSS variables for theming, lucide-svelte icons
+- DOM-based tiles with CSS 3D transforms
 
 **Pattern:**
 ```svelte
@@ -58,59 +58,88 @@ router.post('/endpoint', async (req, res) => {
 </script>
 ```
 
-**Pages:**
-1. Input Home - Black screen, capture + quick search (`/` or `?` prefix)
-2. Infinite Canvas - Pinboard masonry, pan/zoom, search teleport
-3. AI Chat - Conversational search with sources
+**Three Views:**
 
-**Forbidden:** ❌ React/Vue/Angular, ❌ Old Svelte 4 syntax (`export let`)
+| View | File | Lines | Purpose |
+|------|------|-------|---------|
+| InputHome | `views/InputHome.svelte` | ~350 | Minimal capture, no search |
+| Canvas | `views/Canvas.svelte` | ~1640 | 3D globe browse, search teleport |
+| AIChat | `views/AIChat.svelte` | ~500 | Conversational search |
+
+**Forbidden:** React/Vue/Angular, Old Svelte 4 syntax (`export let`)
 
 ---
 
-## Canvas (Infinite Flat Board)
+## Canvas (3D Globe Effect)
 
-**Scope:** DOM-based tile rendering, pan/zoom, spatial navigation
+**Scope:** DOM-based tile rendering with 3D sphere projection
 
 **Vision:**
-- Infinite flat plane (no 3D, Z=0)
-- Data as tiles on pinboard
+- Posts scattered on virtual 3D sphere surface
+- Cards shrink and tilt toward edges (like looking at a globe)
 - Search = teleport camera + highlight, NOT filter to list
-- Pinterest / Google Maps feel
+- Obsidian graph view meets Google Earth feel
 
-**Coordinates:**
+**Key Constants:**
+```javascript
+const MIN_ZOOM = 0.6;      // Max 60% zoom out
+const MAX_ZOOM = 2.5;      // Max 250% zoom in
+const FLY_DURATION = 600;  // ms for fly animation
+const FRICTION = 0.92;     // Momentum decay
 ```
-World Space: Posts at (x, y), Camera at (cx, cy) + zoom
-Screen = (World - Camera) × Zoom
+
+**Globe Transform (`getGlobeTransform`):**
+```javascript
+// Sphere radius: 80% of viewport
+const sphereRadius = Math.min(viewportWidth, viewportHeight) * 0.8;
+
+// Center zone (30%) stays at full size
+const centerZone = 0.3;
+
+// Cosine interpolation for smooth falloff
+const smoothT = (1 - Math.cos(t * Math.PI)) / 2;
+
+// Min scale: 40% at edges (readable)
+const minScale = 0.4 + zoomFactor * 0.1;
+
+// Max tilt: 35-45° at edges
+const maxTilt = 35 + (1 - zoomFactor) * 10;
 ```
 
-**Layout (Masonry):**
-- Bin-packing algorithm (not column-based)
-- Variable widths: 160px × [1, 1.1, 1.2, 1.3, 1.4, 1.5]
-- 24px gap, 2800px grid, random shuffle
-- Per-tile jitter: ±2.5° rotation, ±40px horizontal, ±30px vertical
-
-**Tile Types:**
-| Type | Height |
-|------|--------|
-| Image | Real aspect ratio from metadata |
-| URL | 300px with preview, 160px without |
-| Text | 120-380px based on length |
-| Audio | Fixed 100px |
-| File | Fixed 140px |
+**Layout (Spiral Time-based):**
+- Golden angle distribution for organic spacing
+- Newer posts near center, older spiral outward
+- Random jitter for natural feel (±60px)
+- Size by type: images 200px, text 180px, URLs 190px, others 160px
 
 **Interactions:**
-- Left-drag anywhere = pan (even over cards)
-- Scroll = zoom toward cursor
-- Double-click = toggle 1x/1.5x
-- WASD/Arrows = pan, +/- = zoom, / = search, ? = help
+| Input | Action |
+|-------|--------|
+| Left-drag | Pan canvas |
+| Scroll wheel | Zoom toward cursor |
+| Click empty | Fly to location |
+| Click card | Open post modal |
+| WASD/Arrows | Pan camera |
+| +/- | Zoom |
+| / | Focus search |
+| Enter (in search) | Teleport to next result |
+| H | Go home |
+| C | Go to chat |
+| 0 | Reset view |
+
+**Search Teleport:**
+- Enter cycles through results (camera flies to card)
+- Arrow Up/Down also cycle
+- Click card opens it
+- `highlightedPostId` shows pulsing glow on found card
 
 **Performance:**
-- Frustum culling (visible + padding only)
-- CSS will-change
+- Frustum culling (only render visible cards ± 300px)
+- CSS `will-change` for transforms
 - Lazy image loading
 - 60fps target
 
-**Forbidden:** ❌ Canvas API for text, ❌ 3D transforms, ❌ Search as list filter
+**Forbidden:** Canvas API for text, Search as list filter
 
 ---
 
@@ -120,7 +149,7 @@ Screen = (World - Camera) × Zoom
 
 **Tech:**
 - Groq API (OpenAI-compatible)
-- Model: `openai/gpt-oss-20b`
+- Model: `llama-3.1-70b-versatile`
 - ~1000 tokens/sec, behind `AI_ENABLED` toggle
 
 **Pattern:**
@@ -131,7 +160,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 async function suggest(content) {
   if (!process.env.AI_ENABLED) return null;
   const response = await groq.chat.completions.create({
-    model: 'openai/gpt-oss-20b',
+    model: 'llama-3.1-70b-versatile',
     messages: [{ role: 'system', content: PROMPT }, { role: 'user', content }],
     max_tokens: 200
   });
@@ -141,7 +170,7 @@ async function suggest(content) {
 
 **Safety:** Sanitize inputs, validate JSON outputs, rate limit, 10s timeout
 
-**Forbidden:** ❌ Modify user content, ❌ Auto-apply suggestions, ❌ Expose API key
+**Forbidden:** Modify user content, Auto-apply suggestions, Expose API key
 
 ---
 
@@ -192,4 +221,4 @@ CMD ["node", "dist/index.js"]
 | Install | bun install | pnpm |
 | Build | typecheck | full build |
 
-**Forbidden:** ❌ SaaS, ❌ Cloud lock-in, ❌ Secrets in Dockerfile
+**Forbidden:** SaaS, Cloud lock-in, Secrets in Dockerfile

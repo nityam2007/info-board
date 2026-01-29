@@ -4,32 +4,31 @@
 
 ## Overview
 
-- **Input Home** - Black screen, single input box, capture + quick search (type `/` or `?`)
-- **Infinite Canvas** - Pinboard-style masonry, pan/zoom/keyboard navigation
+- **Input Home** - Minimal dark screen, single input box, capture only
+- **3D Globe Canvas** - Posts scattered on spherical surface, pan/zoom/fly navigation
 - **AI Chat** - Conversational search using your data with source references
 
 ## Philosophy
 
 - **Capture first, organize later** - no cognitive load at input time
-- **Visual memory** - spatial recall beats text lists
-- **Search = Navigation** - teleports to region, doesn't filter
+- **Visual memory** - spatial recall on 3D globe beats text lists
+- **Search = Navigation** - teleports to card on globe, doesn't filter to list
 - **Content IS the interface** - no menus, no chrome
 - **Your data, your server** - self-hosted, single user
 
 ## Features
 
-- 📝 **Capture anything** - Text, images, audio, video, URLs, files
-- 🖱️ **Drag & drop** - Drop files anywhere on the home screen
-- 📋 **Clipboard paste** - Paste images or text directly
-- 🔗 **URL metadata** - Auto-extracts title and description from URLs
-- 🔍 **Search teleport** - Search finds and teleports to matching content
-- ⌨️ **Keyboard shortcuts** - WASD/arrows to pan, +/- zoom, ? for help
-- 🖐️ **Touch support** - Pinch to zoom, drag to pan
-- 🏷️ **AI tagging** - Groq AI suggests tags and tasks
-- 💬 **AI Chat** - Conversational search with source references
-- 🎨 **Infinite canvas** - Pinboard-style masonry, pan/zoom anywhere
-- 📐 **Smart sizing** - Image tiles use real aspect ratios
-- 🔀 **Random layout** - Posts shuffled for variety each load
+- Capture anything - Text, images, audio, video, URLs, files
+- Drag & drop - Drop files anywhere on the home screen
+- Clipboard paste - Paste images or text directly
+- URL metadata - Auto-extracts title, description, and OG images
+- 3D Globe effect - Posts feel like they're on a sphere surface
+- Search teleport - Enter cycles through results, camera flies to card
+- Keyboard shortcuts - WASD/arrows to pan, +/- zoom, / for search
+- Touch support - Pinch to zoom, drag to pan
+- AI tagging - Groq AI suggests tags and tasks
+- AI Chat - Conversational search with source references
+- Smooth animations - Fly-to, momentum scrolling, pulsing highlights
 
 ## Quick Start
 
@@ -67,20 +66,82 @@ pnpm dev:frontend  # http://localhost:5173
 │   │   └── routes/        # API endpoints
 │   └── package.json
 │
-├── frontend/              # Svelte + Vite app
+├── frontend/              # Svelte 5 + Vite app
 │   ├── src/
 │   │   ├── main.ts        # App entry
 │   │   ├── App.svelte     # Root component
-│   │   ├── lib/           # Utilities
+│   │   ├── lib/           # Utilities, API client
 │   │   └── views/         # Page components
+│   │       ├── InputHome.svelte  # Capture (~350 lines)
+│   │       ├── Canvas.svelte     # 3D Globe (~1640 lines)
+│   │       └── AIChat.svelte     # Chat (~500 lines)
 │   └── package.json
 │
 └── AI/                    # AI workflow configuration
     ├── claude.md          # Claude's persistent memory
-    ├── rules.md           # Engineering standards
     ├── architecture.md    # System design
+    ├── agents.md          # Domain patterns
+    ├── mistakes.md        # Errors to avoid
     └── ...
 ```
+
+## Tech Stack
+
+- **Backend**: Express.js + Node 20 + SQLite + DuckDB (FTS)
+- **Frontend**: Svelte 5 (runes) + Vite + DOM tiles with CSS 3D transforms
+- **Database**: SQLite (transactional) + DuckDB (analytics/search)
+- **AI**: Groq API (llama-3.1-70b-versatile, toggleable via .env)
+- **Uploads**: File storage in `data/uploads/YYYY/MM/`
+
+## Three Views
+
+| View | Purpose | Search |
+|------|---------|--------|
+| **InputHome** | Capture content | Press `/` goes to Canvas |
+| **Canvas** | Browse on 3D globe | Enter teleports through results |
+| **AIChat** | Conversational search | Via AI responses |
+
+## Canvas Controls
+
+### Globe Effect
+
+Cards are projected onto a virtual 3D sphere:
+- **Center**: Full size, no rotation
+- **Edges**: Shrink to 40-50%, tilt up to 35-45°
+- **Zoom range**: 60% - 250%
+- **Sphere fills**: 80% of viewport
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| **W/A/S/D** or **Arrows** | Pan canvas |
+| **+/-** | Zoom in/out |
+| **0** or **Home** | Reset view |
+| **/** | Focus search box |
+| **Enter** (in search) | Teleport to next result |
+| **Arrow Up/Down** (in search) | Cycle through results |
+| **H** | Go to Home |
+| **C** | Go to AI Chat |
+| **Esc** | Close modal / clear search |
+| **?** | Toggle help overlay |
+
+### Mouse
+
+| Action | Effect |
+|--------|--------|
+| **Drag** | Pan canvas |
+| **Scroll wheel** | Zoom toward cursor |
+| **Click empty space** | Fly to location |
+| **Click card** | Open post detail |
+
+### Touch
+
+| Gesture | Effect |
+|---------|--------|
+| **Drag** | Pan canvas |
+| **Pinch** | Zoom in/out |
+| **Tap card** | Open post |
 
 ## API Endpoints
 
@@ -89,6 +150,7 @@ pnpm dev:frontend  # http://localhost:5173
 | POST | `/api/posts` | Create post |
 | GET | `/api/posts` | List posts |
 | GET | `/api/posts/:id` | Get post with tags/tasks |
+| GET | `/api/posts/stats` | Get dashboard stats |
 | DELETE | `/api/posts/:id` | Soft delete post |
 | POST | `/api/upload` | Upload file (base64) |
 | POST | `/api/upload/url` | Upload URL with metadata |
@@ -103,56 +165,16 @@ pnpm dev:frontend  # http://localhost:5173
 | POST | `/api/ai/suggest/:id` | AI suggestions for post |
 | POST | `/api/ai/chat` | AI chat query |
 
-## Tech Stack
-
-- **Backend**: Express.js + Node 20 + SQLite + DuckDB (FTS)
-- **Frontend**: Svelte 5 (runes) + Vite + DOM-based infinite board
-- **Database**: SQLite (transactional) + DuckDB (analytics/search)
-- **AI**: Groq API (openai/gpt-oss-20b, toggleable via .env)
-- **Uploads**: File storage in `data/uploads/YYYY/MM/`
-
-## Canvas Controls
-
-### Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| **W/A/S/D** or **Arrows** | Pan canvas |
-| **+/-** | Zoom in/out |
-| **1-5** | Quick zoom levels (30%, 60%, 100%, 150%, 200%) |
-| **Home** or **0** | Reset view |
-| **R** | Random teleport to a post |
-| **/** | Focus search box |
-| **Esc** | Close modal/help |
-| **?** | Toggle help overlay |
-
-### Mouse
-
-| Action | Effect |
-|--------|--------|
-| **Drag** | Pan canvas (from anywhere) |
-| **Scroll wheel** | Zoom toward cursor |
-| **Double-click** | Toggle zoom (1x ↔ 1.5x) |
-| **Click tile** | Open post detail |
-
-### Touch
-
-| Gesture | Effect |
-|---------|--------|
-| **Drag** | Pan canvas |
-| **Pinch** | Zoom in/out |
-| **Tap** | Open post |
-
 ## Supported Content Types
 
 | Type | Icon | Examples |
 |------|------|----------|
-| text | 📝 | Notes, thoughts, code snippets |
-| image | 🖼️ | PNG, JPG, GIF, WebP, SVG |
-| audio | 🎵 | MP3, WAV, OGG, FLAC |
-| video | 🎬 | MP4, WebM, MOV |
-| url | 🔗 | Any HTTP/HTTPS link |
-| file | 📎 | PDF, ZIP, JSON, etc. |
+| text | Notes | Notes, thoughts, code snippets |
+| image | Images | PNG, JPG, GIF, WebP, SVG |
+| audio | Audio | MP3, WAV, OGG, FLAC |
+| video | Video | MP4, WebM, MOV |
+| url | Links | Any HTTP/HTTPS link |
+| file | Files | PDF, ZIP, JSON, etc. |
 
 ## AI Workflow
 

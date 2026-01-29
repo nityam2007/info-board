@@ -30,9 +30,9 @@ export function getDuckDB(): DuckDBConnection {
 
 export async function closeDuckDB(): Promise<void> {
   if (connection) {
-    // @duckdb/node-api uses disconnect() not close()
+    // @duckdb/node-api uses closeSync() not close()
     try {
-      await connection.disconnect();
+      connection.closeSync();
     } catch (e) {
       // Ignore close errors
     }
@@ -40,7 +40,7 @@ export async function closeDuckDB(): Promise<void> {
   }
   if (instance) {
     try {
-      await instance.close();
+      instance.closeSync();
     } catch (e) {
       // Ignore close errors
     }
@@ -57,32 +57,42 @@ export async function syncPostToDuckDB(post: {
 }): Promise<void> {
   if (!connection) return;
 
-  await connection.run(`
+  // Use prepared statement to safely insert values
+  const stmt = await connection.prepare(`
     INSERT OR REPLACE INTO posts_fts (id, content, content_type, created_at)
-    VALUES (?, ?, ?, ?);
-  `, post.id, post.content, post.content_type, post.created_at);
+    VALUES ($1, $2, $3, $4);
+  `);
+  
+  stmt.bindVarchar(1, post.id);
+  stmt.bindVarchar(2, post.content);
+  stmt.bindVarchar(3, post.content_type);
+  stmt.bindVarchar(4, post.created_at);
+  
+  await stmt.run();
 }
 
 // Full-text search using DuckDB
 export async function searchPostsFTS(query: string, limit = 50): Promise<string[]> {
   if (!connection) return [];
 
-  const result = await connection.run(`
+  // Use prepared statement to safely bind values
+  const stmt = await connection.prepare(`
     SELECT id FROM posts_fts
-    WHERE content ILIKE '%' || ? || '%'
+    WHERE content ILIKE '%' || $1 || '%'
     ORDER BY created_at DESC
-    LIMIT ?;
-  `, query, limit);
-
-  const ids: string[] = [];
-  const reader = result.getReader();
+    LIMIT $2;
+  `);
   
-  while (true) {
-    const chunk = await reader.read();
-    if (chunk.done) break;
-    for (let i = 0; i < chunk.value.rowCount; i++) {
-      ids.push(chunk.value.getChild(0)?.getValue(i) as string);
-    }
+  stmt.bindVarchar(1, query);
+  stmt.bindInteger(2, limit);
+  
+  const result = await stmt.runAndReadAll();
+  
+  const ids: string[] = [];
+  const rows = result.getRows();
+  
+  for (const row of rows) {
+    ids.push(row[0] as string);
   }
   
   return ids;

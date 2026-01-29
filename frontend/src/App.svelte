@@ -7,24 +7,37 @@
   let currentView = $state<'input' | 'canvas' | 'chat'>('input');
   let searchParam = $state('');
   let postIdParam = $state('');
+  let transitioning = $state(false);
   
   function handleNavigate(detail?: { search?: string; postId?: string; view?: 'input' | 'canvas' | 'chat' }) {
-    if (detail?.view) {
-      currentView = detail.view;
-      searchParam = '';
-      postIdParam = '';
-    } else if (detail?.search) {
-      searchParam = detail.search;
-      currentView = 'canvas';
-    } else if (detail?.postId) {
-      postIdParam = detail.postId;
-      currentView = 'canvas';
-    } else {
-      // Toggle between input and canvas (default behavior)
-      currentView = currentView === 'input' ? 'canvas' : 'input';
-      searchParam = '';
-      postIdParam = '';
-    }
+    // Start transition
+    transitioning = true;
+    
+    setTimeout(() => {
+      if (detail?.view) {
+        currentView = detail.view;
+        // Check if search is defined (including empty string for focus-search mode)
+        searchParam = detail.search !== undefined ? detail.search : '';
+        postIdParam = '';
+      } else if (detail?.search !== undefined) {
+        // search can be empty string (means focus search bar)
+        searchParam = detail.search;
+        currentView = 'canvas';
+      } else if (detail?.postId) {
+        postIdParam = detail.postId;
+        currentView = 'canvas';
+      } else {
+        // Toggle between input and canvas (default behavior)
+        currentView = currentView === 'input' ? 'canvas' : 'input';
+        searchParam = '';
+        postIdParam = '';
+      }
+      
+      // End transition
+      setTimeout(() => {
+        transitioning = false;
+      }, 50);
+    }, 150);
   }
   
   function handleKeydown(e: KeyboardEvent) {
@@ -36,7 +49,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<main class="app-container">
+<main class="app-container" class:transitioning>
   {#if currentView === 'input'}
     <InputHome onnavigate={handleNavigate} />
   {:else if currentView === 'canvas'}
@@ -54,5 +67,11 @@
   .app-container {
     min-height: 100vh;
     width: 100%;
+    opacity: 1;
+    transition: opacity 0.15s ease-out;
+  }
+  
+  .app-container.transitioning {
+    opacity: 0;
   }
 </style>

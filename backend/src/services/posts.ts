@@ -64,6 +64,90 @@ export const postsService = {
     return result.changes > 0;
   },
 
+  getStats(): {
+    totalPosts: number;
+    postsByType: Record<string, number>;
+    postsToday: number;
+    postsThisWeek: number;
+    streak: number;
+    recentTags: { name: string; count: number }[];
+  } {
+    const db = getDatabase();
+    
+    // Total posts
+    const totalStmt = db.prepare(`SELECT COUNT(*) as count FROM posts WHERE deleted_at IS NULL`);
+    const totalPosts = (totalStmt.get() as any).count;
+    
+    // Posts by type
+    const typeStmt = db.prepare(`
+      SELECT content_type, COUNT(*) as count 
+      FROM posts WHERE deleted_at IS NULL 
+      GROUP BY content_type
+    `);
+    const typeRows = typeStmt.all() as any[];
+    const postsByType: Record<string, number> = {};
+    typeRows.forEach(row => { postsByType[row.content_type] = row.count; });
+    
+    // Posts today
+    const todayStmt = db.prepare(`
+      SELECT COUNT(*) as count FROM posts 
+      WHERE deleted_at IS NULL AND date(created_at) = date('now')
+    `);
+    const postsToday = (todayStmt.get() as any).count;
+    
+    // Posts this week
+    const weekStmt = db.prepare(`
+      SELECT COUNT(*) as count FROM posts 
+      WHERE deleted_at IS NULL AND created_at >= datetime('now', '-7 days')
+    `);
+    const postsThisWeek = (weekStmt.get() as any).count;
+    
+    // Calculate streak (consecutive days with at least one post)
+    const streakStmt = db.prepare(`
+      SELECT DISTINCT date(created_at) as post_date 
+      FROM posts WHERE deleted_at IS NULL 
+      ORDER BY post_date DESC 
+      LIMIT 30
+    `);
+    const dates = streakStmt.all() as any[];
+    let streak = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    for (let i = 0; i < dates.length; i++) {
+      const postDate = new Date(dates[i].post_date);
+      const expectedDate = new Date(today);
+      expectedDate.setDate(expectedDate.getDate() - i);
+      expectedDate.setHours(0, 0, 0, 0);
+      
+      if (postDate.getTime() === expectedDate.getTime()) {
+        streak++;
+      } else if (i === 0 && postDate.getTime() === new Date(today.getTime() - 86400000).getTime()) {
+        // Allow streak to continue if last post was yesterday
+        streak++;
+      } else {
+        break;
+      }
+    }
+    
+    // Recent tags
+    const tagsStmt = db.prepare(`
+      SELECT name, COUNT(*) as count FROM tags 
+      WHERE post_id IN (SELECT id FROM posts WHERE deleted_at IS NULL)
+      GROUP BY name ORDER BY count DESC LIMIT 5
+    `);
+    const recentTags = tagsStmt.all() as { name: string; count: number }[];
+    
+    return {
+      totalPosts,
+      postsByType,
+      postsToday,
+      postsThisWeek,
+      streak,
+      recentTags,
+    };
+  },
+
   mapRow(row: any): Post {
     return {
       id: row.id,

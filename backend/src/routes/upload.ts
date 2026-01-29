@@ -1,11 +1,11 @@
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { uploadService, getContentTypeFromMime } from '../services/upload.js';
 import { postsService } from '../services/posts.js';
 import { CONFIG } from '../config.js';
 
-export const uploadRouter = Router();
+export const uploadRouter: RouterType = Router();
 
 // Upload file (multipart/form-data with base64 in JSON body)
 uploadRouter.post('/', async (req, res) => {

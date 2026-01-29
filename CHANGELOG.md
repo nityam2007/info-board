@@ -4,6 +4,429 @@
 
 ---
 
+## [2026-01-29] - Zoom Limit & Larger Globe Area
+
+### Changed
+
+**Zoom Limit**
+- Maximum zoom out capped at 60% (was 30%)
+- `MIN_ZOOM = 0.6`
+
+**Globe Visible Area Expanded**
+- Sphere radius increased from 55% to 80% of viewport
+- Cards now spread across more of the screen (less dark edges)
+- zoomFactor minimum updated to 0.6 to match MIN_ZOOM
+
+**Documentation Sync**
+- Updated AI/claude.md - 3D globe, minimal home, search on canvas only
+- Updated AI/architecture.md - Globe details, view descriptions
+- Updated AI/agents.md - Canvas section with globe transform code
+- Updated AI/mistakes.md - Added new learnings
+- Updated README.md - Globe effect, three views, updated controls
+
+### Files Modified
+- `frontend/src/views/Canvas.svelte` - MIN_ZOOM, sphereRadius, zoomFactor
+- `AI/claude.md`, `AI/architecture.md`, `AI/agents.md`, `AI/mistakes.md`, `README.md`
+
+---
+
+## [2026-01-29] - Improved Globe Effect - Smoother & More Readable
+
+### Improved
+
+**Globe Transform - Less Aggressive, More Elegant**
+- Center zone (30% radius): Cards stay at full size, no shrinking
+- Minimum scale: 40-50% (was 15-30%) - edge cards now readable
+- Maximum tilt: 35-45° (was 60-75°) - cards stay legible at edges
+- Cosine interpolation: Smooth S-curve transition (not harsh exponential)
+- Circular sphere: Uses min(width, height) for consistent circular feel
+
+### Visual Result
+- Center cards: Full size, no rotation
+- Mid-range cards: Gradual size reduction, gentle tilt
+- Edge cards: ~40% size, readable text, subtle perspective
+- Smoother overall appearance, less chaotic
+
+### Files Modified
+- `frontend/src/views/Canvas.svelte` - Rewrote `getGlobeTransform()`
+
+---
+
+## [2026-01-29] - Home Page Redesign & Search Consolidation
+
+### Changed
+
+**Home Page (InputHome) - Complete Redesign**
+- Removed search functionality from home (search now ONLY on Canvas)
+- Clean, minimal design matching Canvas aesthetic
+- Dark glassmorphism style with dot pattern background
+- Simplified stats display (just captures count + streak)
+- Compact input card with upload and submit buttons
+- Smaller nav buttons in top-right corner
+
+**Search Consolidated to Canvas**
+- Pressing `/` on home navigates to Canvas with search focused
+- All search happens on Canvas with teleport navigation
+- Removed redundant search mode, search results section from home
+
+### Technical Changes
+- InputHome.svelte rewritten from ~1600 lines to ~350 lines
+- CSS bundle reduced from 59.49 KB to 46.58 KB
+- Added `searchInputEl` ref to Canvas for auto-focus
+- App.svelte updated to pass search param (including empty string for focus mode)
+
+### Files Modified
+- `frontend/src/views/InputHome.svelte` - Complete rewrite
+- `frontend/src/views/Canvas.svelte` - Added search input ref and auto-focus
+- `frontend/src/App.svelte` - Updated navigation handler for search param
+
+---
+
+## [2026-01-29] - Search = Teleport & Improved Globe Scaling
+
+### Added
+
+**Search Teleport Navigation**
+- Enter key cycles through search results (teleports camera, doesn't open modal)
+- Arrow Up/Down also cycle through results
+- Clicking a card opens it (unchanged)
+- Search dropdown shows result numbers (1, 2, 3...) and hint text
+- Current result highlighted in dropdown with purple accent
+- Highlighted card on globe has pulsing glow animation
+
+### Improved
+
+**Globe 3D Effect - Continuous Scaling**
+- Cards now shrink continuously from center to edges (no more "cutoff" zone)
+- Uses viewport diagonal as reference for smooth scaling across whole screen
+- Zoom-dependent shrinking power: 30% zoom = aggressive (power 2.4), 100% = gentle
+- Cards stay visible longer (opacity fades only at extreme edges, not with scale)
+- Scale range: 1.0 at center → 0.2 at edges (at 30% zoom)
+
+### Technical Changes
+- Added `currentResultIndex` and `highlightedPostId` state for search navigation
+- `flyToResult(index)` - teleports without opening modal
+- `handleSearchKeydown` - handles Enter/Arrow keys for cycling
+- `.world-post.highlighted` - pulsing glow animation for found card
+- `.search-result.active` - visual highlight for current result in dropdown
+
+### Files Modified
+- `frontend/src/views/Canvas.svelte`
+
+---
+
+## [2026-01-29] - True 3D Sphere Effect for Canvas
+
+### Fixed
+
+**Cards Now Shrink at Edges Like a Real 3D Ball**
+- Completely rewrote `getGlobeTransform()` to use proper spherical projection
+- Cards at center: Full size (scale = 1.0), full opacity
+- Cards at edges: Dramatically smaller (scale down to 0.2), fade out
+- Uses mathematical sphere formula: `z = sqrt(1 - x² - y²)`
+
+**Spherical Projection Math**
+- Normalized screen coordinates to -1 to 1 range
+- Calculate Z position on virtual sphere surface
+- Scale factor = `0.2 + sphereZ * 0.8` (20% at edge, 100% at center)
+- Opacity = `sphereZ²` (quadratic fade for smooth edges)
+- Tilt = cards rotate away from viewer at edges (up to 70°)
+
+**Zoom Affects Sphere Tightness**
+- At 30% zoom: Smaller visible sphere (tighter ball effect)
+- At 100% zoom: Larger sphere radius (more cards visible at full size)
+- `sphereRadius = 0.8 + zoomFactor * 0.4`
+
+### Technical Changes
+- Removed yOffset (was causing vertical drift)
+- Fixed double-scaling bug (width had scale AND transform had scale)
+- Increased perspective distance to 1000px (reduces distortion)
+- Added `transform-style: preserve-3d` for proper 3D rendering
+
+### Visual Result
+- Center: Cards at full size, facing viewer
+- Edges: Cards shrink dramatically and tilt away (like on curved ball surface)
+- Creates illusion of posts scattered on a 3D sphere
+
+### Files Modified
+- `frontend/src/views/Canvas.svelte` - Complete rewrite of `getGlobeTransform()`
+
+---
+
+## [2026-01-29] - Canvas Click & Globe Perspective Fixes
+
+### Fixed
+
+**Header/UI Buttons Not Clickable**
+- `handleCanvasClick` now checks if click target is inside floating UI elements
+- Uses `target.closest()` to detect clicks on `.floating-header`, `.floating-controls`, `.zoom-indicator`
+- Home, Search, AI Chat buttons in header now work correctly
+
+**Cards Not Opening (Sliding Instead)**
+- Root cause: `setPointerCapture` was capturing pointer events even when clicking on cards
+- `handlePointerDown` now checks if target is a UI element or card before starting drag
+- Cards now open modal on click instead of triggering canvas pan
+
+**Globe Perspective Effect More Dramatic**
+- Increased `distortionIntensity` multiplier from 1.5 to 2.5
+- Increased base rotation from 6° to 12°
+- Increased zoom rotation bonus from 4° to 10°
+- Reduced perspective distance from 800px to 500px (closer = more dramatic)
+- Cards at edges now visibly tilt toward center when zoomed out
+- Removed scaleX/scaleY stretch (was causing visual issues), using clean perspective rotation instead
+
+### Technical Changes
+- `handlePointerDown`: Added early return for UI elements and cards
+- `handleCanvasClick`: Added target checks for floating UI and world-post elements
+- `getGlobeTransform`: Simplified to use perspective rotation only (removed stretch)
+- Card transform: Now uses `scale({globe.scale})` instead of separate scaleX/scaleY
+
+### Files Modified
+- `frontend/src/views/Canvas.svelte` - Click handling, pointer capture, globe transform
+
+---
+
+## [2026-01-29] - Canvas Globe Distortion & Click Fix (superseded)
+
+### Complete Canvas Rewrite - Globe Experience
+
+Replaced the grid-based V3 canvas with an immersive 2.5D globe-style spatial canvas, inspired by Obsidian's graph view but with a spherical/globe feel.
+
+**Layout System:**
+- **Time-based spiral layout** - Newer posts near center, older posts spiral outward
+- Uses golden angle distribution for organic, even spacing
+- Random jitter adds natural feel (not rigid grid)
+- Posts sized by content type (images larger, files smaller)
+
+**Globe Distortion Effect:**
+- **Edge fade** - Posts at edges of viewport fade out (globe horizon)
+- **Perspective curve** - Posts scale down and tilt as they approach edges
+- **Y-offset** - Simulates looking down at a curved surface
+- **3D rotation** - Subtle rotateX/rotateY based on position
+
+**Parallax Background:**
+- 3 layers moving at different speeds (0.1x, 0.2x, 0.3x camera movement)
+- Layer 1: Subtle color gradients
+- Layer 2: Dot grid (60px spacing)
+- Layer 3: Larger dot grid (120px spacing)
+- Globe vignette overlay (darker at edges)
+
+**Navigation - All Modes:**
+- **Drag to pan** - Left-click and drag anywhere
+- **Swipe momentum** - Flick to throw, velocity decays with friction (0.92)
+- **Scroll to zoom** - Mouse wheel zooms toward cursor position
+- **Click to fly** - Click empty space to smoothly animate camera there
+- **Pinch to zoom** - Touch gesture support for mobile
+- **Keyboard**: WASD/Arrows to move, +/- to zoom, 0 to reset, H for home, C for chat
+
+**Search = Teleport:**
+- Search finds posts, clicking result flies camera to that post
+- Post opens after flight animation completes
+
+**UI:**
+- Floating header with search bar (glassmorphism)
+- Floating zoom controls (bottom-right)
+- Zoom indicator (bottom-left)
+- Help modal with all shortcuts
+
+### Files Modified
+- `frontend/src/views/Canvas.svelte` - Complete rewrite (~850 lines)
+
+### Why
+User requested Obsidian-style 2.5D globe canvas where posts feel like they're scattered on a spherical surface, swipable/scrollable with immersive spatial navigation.
+
+---
+
+## [2026-01-29] - Canvas V3 & AI Chat V3 Redesign Complete
+
+### Fixed
+- **AIChat.svelte** - Button nesting accessibility error:
+  - Changed conversation-item from `<button>` to `<div>` with `role="button"`
+  - Added keyboard support (`onkeydown` for Enter key)
+  - Added `tabindex="0"` for focus management
+  - Fixed: `<button>` cannot be a child of `<button>` build error
+
+### Summary of V3 Redesign (completed earlier this session)
+
+**Canvas.svelte - Complete Rewrite:**
+- Clean CSS grid masonry layout (replaced confusing infinite wrapping/torus)
+- Filter bar with content type chips (Notes, Images, Links, Audio, Video, Files)
+- Sort options (Newest, Oldest, By Type)
+- Grid/List view toggle
+- Search results panel as sidebar (click to highlight post in grid)
+- Clean card designs with proper type distinction
+- Keyboard shortcuts (/, Escape, H, C, G)
+- Removed random jitter/rotation (was messy)
+
+**AIChat.svelte - Complete Rewrite:**
+- Conversation history persisted to localStorage
+- Sidebar with conversation list (create/delete conversations)
+- Quick action suggestions for empty state
+- Better source references with type icons and colors
+- Context badge showing post count and streak
+- Collapsible sidebar for mobile
+
+### Build Status
+- Backend: Compiles cleanly
+- Frontend: Builds successfully (warnings only - Svelte 5 deprecation notices for `<svelte:component>`)
+
+### Files Modified
+- `frontend/src/views/AIChat.svelte` - Fixed button nesting, complete V3 rewrite
+- `frontend/src/views/Canvas.svelte` - Complete V3 rewrite
+
+---
+
+## [2026-01-29] - Build Fixes: TypeScript & Accessibility
+
+### Fixed
+
+**Backend TypeScript Errors**
+- **DuckDB API compatibility** (`backend/src/db/duckdb.ts`):
+  - Fixed `connection.disconnect()` → `connection.closeSync()` (method renamed in @duckdb/node-api 1.4.x)
+  - Fixed `instance.close()` → `instance.closeSync()`
+  - Fixed `connection.run()` with positional args → use prepared statements with `bindVarchar()`/`bindInteger()`
+  - Fixed `result.getReader()` → use `runAndReadAll()` then `result.getRows()`
+
+- **Express Router type annotations** (all route files):
+  - Added explicit `RouterType` type annotation to fix portable type inference error
+  - Files fixed: `posts.ts`, `search.ts`, `tags.ts`, `tasks.ts`, `upload.ts`
+
+- **FileMetadata interface** (`backend/src/types.ts`):
+  - Added missing `width?: number` and `height?: number` properties for image dimensions
+
+**Frontend Accessibility (a11y) Warnings**
+- **InputHome.svelte** - Shortcuts modal:
+  - Added ARIA roles (`dialog`, `presentation`), `aria-modal`, `tabindex`, keyboard handlers
+  
+- **Canvas.svelte** - Help modal & post detail modal:
+  - Added ARIA roles, `tabindex`, keyboard handlers for Escape key
+  - Added `svelte-ignore` comments for intentional non-interactive element handlers
+  - Added caption ignore for video element (user-uploaded content has no captions)
+  - Added ignore for canvas container's tabindex (needed for keyboard navigation)
+
+### Files Modified
+- `backend/src/db/duckdb.ts` - DuckDB API compatibility rewrite
+- `backend/src/types.ts` - Added width/height to FileMetadata
+- `backend/src/routes/posts.ts` - Router type annotation
+- `backend/src/routes/search.ts` - Router type annotation
+- `backend/src/routes/tags.ts` - Router type annotation
+- `backend/src/routes/tasks.ts` - Router type annotation
+- `backend/src/routes/upload.ts` - Router type annotation
+- `frontend/src/views/InputHome.svelte` - Accessibility fixes
+- `frontend/src/views/Canvas.svelte` - Accessibility fixes
+
+### Why
+- Build was failing due to @duckdb/node-api breaking changes (API method renames)
+- Express router type inference errors prevented backend compilation
+- Accessibility warnings cluttered build output and indicated missing ARIA support
+
+---
+
+## [2026-01-29] - Info Board V2: Premium UI Experience
+
+### Theme: "Make users WANT to use it"
+
+A comprehensive UI overhaul focused on creating an engaging, sticky experience that users
+want to return to. Inspired by premium apps like Notion, Linear, and Arc Browser.
+
+### Added
+
+**Enhanced Design System (app.css)**
+- New CSS variables for richer color palette with depth:
+  - `--color-bg-elevated`, `--color-surface-hover`, `--color-primary-glow`
+  - Success, warning, info accent colors with dim variants
+- Premium gradient system: `--gradient-primary`, `--gradient-glow`, `--gradient-shine`
+- Layered shadow system: `--shadow-sm`, `--shadow-md`, `--shadow-lg`, `--shadow-glow`
+- Smooth timing functions: `--ease-out-expo`, `--ease-out-back`, `--ease-spring`
+
+**New Animations**
+- `@keyframes float` - Ambient floating for orbs
+- `@keyframes pulse-glow` - Attention-grabbing pulse
+- `@keyframes breathe` - Subtle background breathing
+- `@keyframes shimmer` - Loading state shimmer
+- `@keyframes confetti-fall` - Celebration confetti
+- `@keyframes bounce-in`, `slide-up-fade` - Entry animations
+- `@keyframes gradient-shift`, `ripple` - Interactive effects
+- Utility classes: `.animate-float`, `.animate-pulse-glow`, `.animate-bounce-in`
+- Stagger delay helpers: `.stagger-1` through `.stagger-5`
+
+**Stats API Endpoint**
+- `GET /api/posts/stats` - Returns dashboard statistics:
+  - `totalPosts`, `postsToday`, `postsThisWeek`
+  - `postsByType` - Breakdown by content type
+  - `streak` - Consecutive days with captures
+  - `recentTags` - Top 5 tags by count
+- Added `getStats()` method to `postsService` (backend)
+- Added `api.posts.stats()` to frontend API client
+
+**InputHome.svelte - Complete Transformation**
+- Animated background:
+  - Gradient layer with breathing animation
+  - Grid overlay with radial mask
+  - Three floating orbs with different colors and animation delays
+- Stats dashboard (for returning users):
+  - Total captures, day streak (with fire icon), weekly count
+  - Top topic tag display
+  - Animated card hover states with gradient backgrounds
+- Empty state for new users:
+  - Brain icon with gradient background
+  - "Start your knowledge journey" messaging
+  - Feature chips showing what users can capture
+- Confetti celebration on successful capture:
+  - 50 randomized pieces with varied colors, sizes, delays
+  - Smooth falling animation
+- Motivational messages:
+  - Rotating hints when idle ("Your ideas deserve a home", etc.)
+  - Streak-specific messages when on a streak
+- Enhanced input container:
+  - Zap icon for capture mode
+  - Larger, more prominent submit button with gradient
+  - Better focus states with glow effect
+- Improved drag-and-drop overlay:
+  - Centered content with icon, title, subtitle
+  - Pulsing border animation
+- All quick actions and buttons with lift-on-hover effect
+- Success toast with icon wrapper and bounce animation
+
+**Canvas.svelte Improvements**
+- Loading state:
+  - Centered spinner with pulsing fade animation
+  - "Loading your knowledge..." message
+- Empty state:
+  - Large gradient icon with sparkles
+  - "Your canvas awaits" heading
+  - CTA button to navigate to capture view
+
+**App.svelte View Transitions**
+- Fade transition between views (150ms out, 50ms in)
+- Prevents jarring instant switches
+
+### Changed
+- Updated `--color-bg` to slightly darker `#07070b` for more contrast
+- Stats dashboard uses 120px minimum column width, auto-fit grid
+- All buttons use new shadow and timing function variables
+- Keyboard shortcuts modal has larger padding and better animations
+
+### Files Modified
+- `frontend/src/app.css` - Enhanced design system
+- `frontend/src/lib/api.ts` - Added Stats interface and API method
+- `frontend/src/App.svelte` - Added view transitions
+- `frontend/src/views/InputHome.svelte` - Complete rewrite with new features
+- `frontend/src/views/Canvas.svelte` - Added loading/empty states
+- `backend/src/services/posts.ts` - Added getStats() method
+- `backend/src/routes/posts.ts` - Added /stats endpoint
+
+### Why
+User feedback: "When I open it I don't feel like using it" - the app needed
+personality, delight, and visual hooks to create engagement. Premium apps
+succeed by making users feel good about using them. This update adds:
+- Visual satisfaction (animations, celebrations)
+- Progress tracking (stats, streaks)
+- Emotional connection (motivational messages)
+- Professional polish (smooth transitions, consistent styling)
+
+---
+
 ## [2026-01-23] - AI Chat Markdown Rendering & Styling
 
 ### Added

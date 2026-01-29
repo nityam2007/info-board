@@ -18,6 +18,8 @@ export interface FileMetadata {
   url?: string; // For URL posts
   title?: string; // Extracted title for URLs
   description?: string; // Extracted description
+  width?: number; // Image width
+  height?: number; // Image height
 }
 
 // Tag entity - reference to post

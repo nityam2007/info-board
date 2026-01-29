@@ -29,6 +29,15 @@ export interface Task {
   created_at: string;
 }
 
+export interface Stats {
+  totalPosts: number;
+  postsByType: Record<string, number>;
+  postsToday: number;
+  postsThisWeek: number;
+  streak: number;
+  recentTags: { name: string; count: number }[];
+}
+
 export interface ExportData {
   version: string;
   exportedAt: string;
@@ -122,6 +131,8 @@ export const api = {
       request<Post>(`/posts/${id}`),
     delete: (id: string) =>
       request<{ deleted: boolean }>(`/posts/${id}`, { method: 'DELETE' }),
+    stats: () =>
+      request<Stats>('/posts/stats'),
   },
 
   tags: {

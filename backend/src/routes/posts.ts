@@ -1,10 +1,20 @@
-import { Router } from 'express';
+import { Router, type Router as RouterType } from 'express';
 import { postsService } from '../services/posts.js';
 import { tagsService } from '../services/tags.js';
 import { tasksService } from '../services/tasks.js';
 import type { CreatePostRequest } from '../types.js';
 
-export const postsRouter = Router();
+export const postsRouter: RouterType = Router();
+
+// Get stats (before :id route to avoid conflict)
+postsRouter.get('/stats', async (req, res) => {
+  try {
+    const stats = postsService.getStats();
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
 
 // Create post
 postsRouter.post('/', async (req, res) => {

@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, type Post } from '$lib/api';
+  import { api, type Stats } from '$lib/api';
   import { 
-    Send, Search, Grid3x3, Upload, Link2, Image, Music, 
-    Video, FileText, Paperclip, Loader2, X, Check, ExternalLink,
-    Sparkles, ArrowRight, Bot, Keyboard, Clock
+    Send, Grid3x3, Upload, Link2, 
+    Loader2, Check, Bot, Keyboard,
+    Flame, Zap, Layers, Compass
   } from 'lucide-svelte';
   
   interface Props {
@@ -16,77 +16,55 @@
   // State
   let content = $state('');
   let isSubmitting = $state(false);
-  let recentPosts = $state<{ id: string; content: string; type: string }[]>([]);
-  let searchResults = $state<Post[]>([]);
-  let isSearching = $state(false);
-  let mode = $state<'capture' | 'search'>('capture');
   let isDragging = $state(false);
   let uploadProgress = $state('');
   let showSuccess = $state(false);
+  let showConfetti = $state(false);
+  let stats = $state<Stats | null>(null);
+  let statsLoading = $state(true);
+  let mounted = $state(false);
   let showShortcuts = $state(false);
   
   let inputElement: HTMLTextAreaElement;
-  let searchTimeout: ReturnType<typeof setTimeout>;
   
   // URL detection
   const urlRegex = /^https?:\/\/[^\s]+$/i;
   
-  // Reactive mode switching
-  $effect(() => {
-    if (content.startsWith('/') || content.startsWith('?')) {
-      mode = 'search';
-      debouncedSearch(content.slice(1));
-    } else if (content.length === 0) {
-      mode = 'capture';
-      searchResults = [];
-    }
-  });
-  
-  // Auto-focus on mount
-  onMount(() => {
+  onMount(async () => {
+    mounted = true;
     inputElement?.focus();
-  });
-  
-  function debouncedSearch(query: string) {
-    clearTimeout(searchTimeout);
-    if (!query.trim()) {
-      searchResults = [];
-      return;
-    }
-    searchTimeout = setTimeout(() => performSearch(query), 200);
-  }
-  
-  async function performSearch(query: string) {
-    isSearching = true;
+    
     try {
-      searchResults = await api.search.simple(query);
+      stats = await api.posts.stats();
     } catch (error) {
-      console.error('Search failed:', error);
+      console.error('Failed to load stats:', error);
     } finally {
-      isSearching = false;
+      statsLoading = false;
     }
-  }
+  });
   
   async function handleSubmit() {
     if (!content.trim() || isSubmitting) return;
     
-    if (mode === 'search') {
-      onnavigate?.({ search: content.slice(1) });
-      return;
-    }
-    
     isSubmitting = true;
     try {
       if (urlRegex.test(content.trim())) {
-        const post = await api.upload.url(content.trim());
-        recentPosts = [{ id: post.id, content: post.metadata?.title as string || post.content, type: 'url' }, ...recentPosts.slice(0, 4)];
+        await api.upload.url(content.trim());
       } else {
-        const post = await api.posts.create(content.trim());
-        recentPosts = [{ id: post.id, content: post.content, type: 'text' }, ...recentPosts.slice(0, 4)];
+        await api.posts.create(content.trim());
       }
       content = '';
+      
+      // Celebration
+      showConfetti = true;
       showSuccess = true;
-      setTimeout(() => showSuccess = false, 2000);
+      setTimeout(() => {
+        showSuccess = false;
+        showConfetti = false;
+      }, 2500);
+      
+      // Refresh stats
+      stats = await api.posts.stats();
     } catch (error) {
       console.error('Failed to create post:', error);
     } finally {
@@ -102,12 +80,18 @@
     try {
       for (const file of fileArray) {
         uploadProgress = `Uploading ${file.name}...`;
-        const post = await api.upload.file(file);
-        recentPosts = [{ id: post.id, content: file.name, type: post.content_type }, ...recentPosts.slice(0, 4)];
+        await api.upload.file(file);
       }
       uploadProgress = '';
+      
+      showConfetti = true;
       showSuccess = true;
-      setTimeout(() => showSuccess = false, 2000);
+      setTimeout(() => {
+        showSuccess = false;
+        showConfetti = false;
+      }, 2500);
+      
+      stats = await api.posts.stats();
     } catch (error) {
       console.error('Upload failed:', error);
       uploadProgress = '';
@@ -160,165 +144,176 @@
   }
   
   function handleGlobalKeydown(e: KeyboardEvent) {
-    // Skip if typing in textarea
-    if ((e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
+    if ((e.target as HTMLElement)?.tagName === 'TEXTAREA') {
+      // If typing "/" in empty textarea, go to canvas search
+      if (e.key === '/' && content === '') {
+        e.preventDefault();
+        onnavigate?.({ view: 'canvas', search: '' });
+      }
+      return;
+    }
     
     switch (e.key.toLowerCase()) {
       case 'g':
+      case '/':
         e.preventDefault();
-        onnavigate?.({ view: 'canvas' });
+        onnavigate?.({ view: 'canvas', search: '' });
         break;
       case 'c':
         e.preventDefault();
         onnavigate?.({ view: 'chat' });
-        break;
-      case '/':
-        e.preventDefault();
-        content = '/';
-        inputElement?.focus();
         break;
       case '?':
         e.preventDefault();
         showShortcuts = !showShortcuts;
         break;
       case 'escape':
-        if (showShortcuts) {
-          showShortcuts = false;
-        }
+        if (showShortcuts) showShortcuts = false;
         break;
     }
   }
   
-  function openPost(post: { id: string }) {
-    onnavigate?.({ postId: post.id });
+  // Confetti
+  function generateConfetti(): { x: number; delay: number; color: string; size: number }[] {
+    const colors = ['#6366f1', '#8b5cf6', '#a855f7', '#22c55e', '#f59e0b', '#ec4899'];
+    return Array.from({ length: 50 }, () => ({
+      x: Math.random() * 100,
+      delay: Math.random() * 0.5,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      size: 4 + Math.random() * 6,
+    }));
   }
   
-  function getTypeIcon(type: string) {
-    switch (type) {
-      case 'text': return FileText;
-      case 'image': return Image;
-      case 'audio': return Music;
-      case 'video': return Video;
-      case 'url': return Link2;
-      case 'file': return Paperclip;
-      default: return FileText;
-    }
-  }
-  
-  function getGreeting(): string {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  }
+  let confettiPieces = $derived(showConfetti ? generateConfetti() : []);
 </script>
 
 <svelte:window onpaste={handlePaste} onkeydown={handleGlobalKeydown} />
 
 <div 
-  class="home-container"
+  class="home"
+  class:mounted
   ondrop={handleDrop}
   ondragover={handleDragOver}
   ondragleave={handleDragLeave}
   role="application"
-  aria-label="Info Board capture interface"
+  aria-label="Info Board capture"
 >
-  <!-- Background glow -->
-  <div class="bg-glow"></div>
-  <div class="bg-grid"></div>
+  <!-- Background -->
+  <div class="bg">
+    <div class="bg-gradient"></div>
+    <div class="bg-dots"></div>
+    <div class="bg-vignette"></div>
+  </div>
+  
+  <!-- Confetti -->
+  {#if showConfetti}
+    <div class="confetti">
+      {#each confettiPieces as piece}
+        <div 
+          class="confetti-piece" 
+          style="left:{piece.x}%;animation-delay:{piece.delay}s;background:{piece.color};width:{piece.size}px;height:{piece.size}px;"
+        ></div>
+      {/each}
+    </div>
+  {/if}
   
   <!-- Drag overlay -->
   {#if isDragging}
     <div class="drag-overlay">
-      <Upload size={48} strokeWidth={1.5} />
-      <span>Drop files here</span>
+      <div class="drag-box">
+        <Upload size={48} strokeWidth={1.5} />
+        <span>Drop to capture</span>
+      </div>
     </div>
   {/if}
 
-  <!-- Keyboard Shortcuts Modal -->
+  <!-- Shortcuts Modal -->
   {#if showShortcuts}
-    <div class="shortcuts-overlay" onclick={() => showShortcuts = false}>
-      <div class="shortcuts-modal" onclick={(e) => e.stopPropagation()}>
-        <h3><Keyboard size={20} /> Keyboard Shortcuts</h3>
-        <div class="shortcuts-grid">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="modal-overlay" onclick={() => showShortcuts = false} onkeydown={(e) => e.key === 'Escape' && (showShortcuts = false)} role="presentation">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
+        <h3><Keyboard size={18} /> Shortcuts</h3>
+        <div class="shortcuts">
+          <div class="shortcut"><kbd>/</kbd> <span>Search on Canvas</span></div>
           <div class="shortcut"><kbd>G</kbd> <span>Go to Canvas</span></div>
-          <div class="shortcut"><kbd>C</kbd> <span>Open AI Chat</span></div>
-          <div class="shortcut"><kbd>/</kbd> <span>Start search</span></div>
-          <div class="shortcut"><kbd>?</kbd> <span>Show shortcuts</span></div>
-          <div class="shortcut"><kbd>⌘</kbd>+<kbd>Enter</kbd> <span>Submit</span></div>
-          <div class="shortcut"><kbd>Esc</kbd> <span>Close modal</span></div>
+          <div class="shortcut"><kbd>C</kbd> <span>AI Chat</span></div>
+          <div class="shortcut"><kbd>Ctrl+Enter</kbd> <span>Submit</span></div>
+          <div class="shortcut"><kbd>?</kbd> <span>This help</span></div>
         </div>
-        <button class="close-shortcuts" onclick={() => showShortcuts = false}>Got it!</button>
+        <button class="modal-btn" onclick={() => showShortcuts = false}>Got it</button>
       </div>
     </div>
   {/if}
   
-  <div class="content">
-    <!-- Header -->
-    <header class="header">
-      <div class="logo">
-        <div class="logo-icon-wrapper">
-          <Sparkles size={22} />
-        </div>
-        <div class="logo-text">
-          <h1>Info Board</h1>
-          <span class="greeting">{getGreeting()}</span>
-        </div>
-      </div>
-      <div class="nav-buttons">
-        <button class="nav-btn help-btn" onclick={() => showShortcuts = true} title="Keyboard shortcuts">
-          <Keyboard size={16} />
-        </button>
-        <button class="nav-btn chat-btn" onclick={() => onnavigate?.({ view: 'chat' })}>
-          <Bot size={18} />
-          <span>AI Chat</span>
-        </button>
-        <button class="nav-btn canvas-btn" onclick={() => onnavigate?.({ view: 'canvas' })}>
-          <Grid3x3 size={18} />
-          <span>Canvas</span>
-          <ArrowRight size={16} />
-        </button>
-      </div>
-    </header>
+  <!-- Main Content -->
+  <div class="main">
+    <!-- Nav -->
+    <nav class="nav">
+      <button class="nav-btn" onclick={() => showShortcuts = true} title="Shortcuts (?)">
+        <Keyboard size={18} />
+      </button>
+      <button class="nav-btn" onclick={() => onnavigate?.({ view: 'chat' })} title="AI Chat (C)">
+        <Bot size={18} />
+      </button>
+      <button class="nav-btn primary" onclick={() => onnavigate?.({ view: 'canvas' })} title="Canvas (G)">
+        <Compass size={18} />
+        <span>Explore</span>
+      </button>
+    </nav>
     
-    <!-- Main Input -->
-    <div class="input-section" class:search-mode={mode === 'search'}>
-      <div class="input-container" class:focused={!!content}>
+    <!-- Center -->
+    <div class="center">
+      <!-- Stats (minimal) -->
+      {#if stats && stats.totalPosts > 0}
+        <div class="stats">
+          <div class="stat">
+            <Layers size={16} />
+            <span class="stat-value">{stats.totalPosts}</span>
+            <span class="stat-label">captures</span>
+          </div>
+          {#if stats.streak > 0}
+            <div class="stat streak">
+              <Flame size={16} />
+              <span class="stat-value">{stats.streak}</span>
+              <span class="stat-label">day streak</span>
+            </div>
+          {/if}
+        </div>
+      {/if}
+      
+      <!-- Input -->
+      <div class="input-card">
         <div class="input-icon">
-          {#if mode === 'search'}
-            <Search size={20} />
-          {:else if urlRegex.test(content.trim())}
+          {#if urlRegex.test(content.trim())}
             <Link2 size={20} />
           {:else}
-            <FileText size={20} />
+            <Zap size={20} />
           {/if}
         </div>
         
         <textarea
           bind:this={inputElement}
           bind:value={content}
-          placeholder={mode === 'search' 
-            ? 'Search your knowledge...' 
-            : 'Capture a thought, paste a link, drop a file...'}
-          rows="3"
+          placeholder="Capture anything..."
+          rows="2"
           onkeydown={handleKeydown}
         ></textarea>
         
         <div class="input-actions">
-          <label class="file-btn" title="Upload file">
+          <label class="action-btn" title="Upload file">
             <Upload size={18} />
             <input type="file" multiple onchange={(e) => handleFiles((e.target as HTMLInputElement).files!)} />
           </label>
           
           <button 
-            class="submit-btn" 
+            class="action-btn submit" 
             onclick={handleSubmit}
             disabled={!content.trim() || isSubmitting}
+            title="Submit (Ctrl+Enter)"
           >
             {#if isSubmitting}
-              <Loader2 size={18} class="spinner" />
-            {:else if mode === 'search'}
-              <Search size={18} />
+              <Loader2 size={18} class="spin" />
             {:else}
               <Send size={18} />
             {/if}
@@ -326,424 +321,312 @@
         </div>
       </div>
       
-      <div class="input-hints">
-        <span class="hint"><kbd>/</kbd> search</span>
-        <span class="hint"><kbd>G</kbd> canvas</span>
-        <span class="hint"><kbd>C</kbd> chat</span>
-        <span class="hint"><kbd>?</kbd> shortcuts</span>
+      <!-- Hints -->
+      <div class="hints">
+        <span><kbd>/</kbd> search</span>
+        <span><kbd>G</kbd> canvas</span>
+        <span><kbd>C</kbd> chat</span>
       </div>
     </div>
-    
-    <!-- Quick Actions -->
-    {#if mode === 'capture' && !content}
-      <div class="quick-actions">
-        <button class="quick-action" onclick={() => { content = '/'; inputElement?.focus(); }}>
-          <Search size={16} />
-          <span>Search posts</span>
-        </button>
-        <button class="quick-action" onclick={() => onnavigate?.({ view: 'canvas' })}>
-          <Grid3x3 size={16} />
-          <span>Browse canvas</span>
-        </button>
-        <button class="quick-action" onclick={() => onnavigate?.({ view: 'chat' })}>
-          <Bot size={16} />
-          <span>Ask AI</span>
-        </button>
-      </div>
-    {/if}
-    
-    <!-- Success Toast -->
-    {#if showSuccess}
-      <div class="toast success">
-        <Check size={18} />
-        <span>Captured successfully!</span>
-      </div>
-    {/if}
-    
-    <!-- Upload Progress -->
-    {#if uploadProgress}
-      <div class="toast progress">
-        <Loader2 size={18} class="spinner" />
-        <span>{uploadProgress}</span>
-      </div>
-    {/if}
-    
-    <!-- Search Results -->
-    {#if mode === 'search' && (searchResults.length > 0 || isSearching)}
-      <div class="results-section">
-        <h3>
-          {#if isSearching}
-            <Loader2 size={16} class="spinner" />
-            Searching...
-          {:else}
-            {searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
-          {/if}
-        </h3>
-        
-        <div class="results-list">
-          {#each searchResults as result, i}
-            {@const TypeIcon = getTypeIcon(result.content_type)}
-            <button class="result-item" onclick={() => openPost(result)} style="animation-delay: {i * 50}ms">
-              <div class="result-icon">
-                <TypeIcon size={16} />
-              </div>
-              <div class="result-content">
-                <span class="result-text">
-                  {result.metadata?.title || result.content.slice(0, 100)}
-                </span>
-                <span class="result-meta">
-                  {result.content_type} • {new Date(result.created_at).toLocaleDateString()}
-                </span>
-              </div>
-              <ExternalLink size={14} class="result-arrow" />
-            </button>
-          {/each}
-        </div>
-      </div>
-    {/if}
-    
-    <!-- Recent Posts -->
-    {#if recentPosts.length > 0 && mode === 'capture'}
-      <div class="recent-section">
-        <h3><Clock size={14} /> Just captured</h3>
-        <div class="recent-list">
-          {#each recentPosts as post, i}
-            {@const TypeIcon = getTypeIcon(post.type)}
-            <button class="recent-item" onclick={() => openPost(post)} style="animation-delay: {i * 50}ms">
-              <TypeIcon size={14} />
-              <span>{post.content.slice(0, 50)}</span>
-            </button>
-          {/each}
-        </div>
-      </div>
-    {/if}
   </div>
+  
+  <!-- Toast -->
+  {#if showSuccess}
+    <div class="toast">
+      <Check size={18} />
+      <span>Captured!</span>
+    </div>
+  {/if}
+  
+  {#if uploadProgress}
+    <div class="toast uploading">
+      <Loader2 size={18} class="spin" />
+      <span>{uploadProgress}</span>
+    </div>
+  {/if}
 </div>
 
 <style>
-  .home-container {
-    position: relative;
-    min-height: 100vh;
-    min-height: 100dvh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
-    overflow: hidden;
-    background: var(--color-bg, #08080c);
-  }
-  
-  .bg-glow {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 100%;
-    height: 100%;
-    background: radial-gradient(ellipse at center, 
-      rgba(99, 102, 241, 0.08) 0%, 
-      rgba(99, 102, 241, 0.04) 40%,
-      transparent 70%);
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .bg-grid {
+  .home {
     position: fixed;
     inset: 0;
-    background-image: 
-      linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
-    background-size: 60px 60px;
-    pointer-events: none;
-    z-index: 0;
+    display: flex;
+    flex-direction: column;
+    background: #030305;
+    opacity: 0;
+    transition: opacity 0.4s;
   }
   
+  .home.mounted {
+    opacity: 1;
+  }
+  
+  /* Background - matches Canvas */
+  .bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  
+  .bg-gradient {
+    position: absolute;
+    inset: 0;
+    background: 
+      radial-gradient(circle at 50% 30%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.05) 0%, transparent 40%);
+  }
+  
+  .bg-dots {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+  
+  .bg-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 30%, rgba(0, 0, 0, 0.4) 100%);
+  }
+  
+  /* Confetti */
+  .confetti {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1000;
+  }
+  
+  .confetti-piece {
+    position: absolute;
+    top: -20px;
+    border-radius: 2px;
+    animation: fall 2.5s ease-out forwards;
+  }
+  
+  @keyframes fall {
+    to { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+  }
+  
+  /* Drag overlay */
   .drag-overlay {
     position: fixed;
     inset: 0;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 16px;
-    background: rgba(8, 8, 12, 0.98);
-    backdrop-filter: blur(12px);
-    border: 3px dashed var(--color-primary, #6366f1);
-    color: var(--color-primary-hover, #818cf8);
-    font-size: 18px;
+    background: rgba(3, 3, 5, 0.95);
+    backdrop-filter: blur(20px);
     z-index: 1000;
-    animation: pulse-border 1.5s ease-in-out infinite;
   }
-
-  @keyframes pulse-border {
-    0%, 100% { border-color: rgba(99, 102, 241, 0.5); }
+  
+  .drag-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 60px 80px;
+    border: 2px dashed rgba(99, 102, 241, 0.5);
+    border-radius: 24px;
+    color: var(--color-primary, #6366f1);
+    font-size: 18px;
+    font-weight: 500;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  
+  @keyframes pulse {
     50% { border-color: rgba(99, 102, 241, 0.8); }
   }
-
-  /* Shortcuts Modal */
-  .shortcuts-overlay {
+  
+  /* Modal */
+  .modal-overlay {
     position: fixed;
     inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(8px);
     z-index: 1000;
-    animation: fade-in 0.2s ease-out;
   }
-
-  .shortcuts-modal {
+  
+  .modal {
     background: var(--color-surface, #121218);
     border: 1px solid var(--color-border, #1e1e26);
-    border-radius: 16px;
-    padding: 24px 32px;
-    min-width: 340px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    animation: scale-in 0.2s ease-out;
+    border-radius: 20px;
+    padding: 28px;
+    min-width: 320px;
+    animation: modal-in 0.2s ease-out;
   }
-
-  @keyframes scale-in {
-    from { transform: scale(0.95); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
+  
+  @keyframes modal-in {
+    from { opacity: 0; transform: scale(0.95); }
   }
-
-  @keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  .shortcuts-modal h3 {
+  
+  .modal h3 {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin: 0 0 20px 0;
-    font-size: 18px;
+    margin: 0 0 20px;
+    font-size: 16px;
     color: var(--color-fg, #fafafa);
   }
-
-  .shortcuts-grid {
+  
+  .shortcuts {
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
-
-  .shortcuts-grid .shortcut {
+  
+  .shortcut {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 14px;
+    gap: 12px;
+    font-size: 13px;
     color: var(--color-muted, #71717a);
   }
-
-  .shortcuts-grid kbd {
-    display: inline-block;
+  
+  .shortcut kbd {
+    min-width: 24px;
     padding: 4px 8px;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--color-bg, #08080c);
     border: 1px solid var(--color-border, #1e1e26);
-    border-radius: 4px;
+    border-radius: 6px;
     font-family: inherit;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--color-fg, #fafafa);
-    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+    text-align: center;
   }
-
-  .close-shortcuts {
-    display: block;
+  
+  .modal-btn {
     width: 100%;
     margin-top: 24px;
     padding: 12px;
     background: var(--color-primary, #6366f1);
     border: none;
-    border-radius: 8px;
-    color: var(--color-fg, #fafafa);
+    border-radius: 10px;
+    color: white;
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .close-shortcuts:hover {
-    background: var(--color-primary-hover, #818cf8);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    transition: background 0.15s;
   }
   
-  .content {
+  .modal-btn:hover {
+    background: var(--color-primary-hover, #818cf8);
+  }
+  
+  /* Main */
+  .main {
     position: relative;
-    width: 100%;
-    max-width: 580px;
+    flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
     z-index: 1;
   }
   
-  @media (max-width: 640px) {
-    .content {
-      gap: 20px;
-    }
-  }
-  
-  .header {
+  /* Nav */
+  .nav {
+    position: absolute;
+    top: 16px;
+    right: 16px;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-  
-  @media (max-width: 480px) {
-    .header {
-      flex-direction: column;
-      align-items: stretch;
-    }
-  }
-  
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
-
-  .logo-icon-wrapper {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    background: var(--color-primary-dim, rgba(99, 102, 241, 0.15));
-    border-radius: 12px;
-    color: var(--color-primary-hover, #818cf8);
-  }
-
-  .logo-text {
-    display: flex;
-    flex-direction: column;
-  }
-  
-  .logo h1 {
-    font-size: 22px;
-    font-weight: 700;
-    color: var(--color-fg, #fafafa);
-    margin: 0;
-    letter-spacing: -0.02em;
-  }
-
-  .greeting {
-    font-size: 13px;
-    color: var(--color-muted, #71717a);
-    margin-top: 2px;
-  }
-  
-  .nav-buttons {
-    display: flex;
-    align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
-  }
-  
-  @media (max-width: 480px) {
-    .nav-buttons {
-      justify-content: flex-end;
-    }
-    
-    .nav-btn span {
-      display: none;
-    }
-    
-    .nav-btn {
-      padding: 10px;
-    }
   }
   
   .nav-btn {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 16px;
-    background: var(--color-surface, #121218);
+    padding: 10px 14px;
+    background: rgba(18, 18, 24, 0.8);
+    backdrop-filter: blur(12px);
     border: 1px solid var(--color-border, #1e1e26);
-    border-radius: 10px;
+    border-radius: 12px;
     color: var(--color-muted, #71717a);
     font-size: 14px;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s;
   }
   
   .nav-btn:hover {
-    background: rgba(30, 30, 40, 0.9);
-    color: var(--color-fg, #fafafa);
-    border-color: var(--color-primary, #6366f1);
-    transform: translateY(-1px);
-  }
-
-  .nav-btn.help-btn {
-    padding: 10px;
-  }
-
-  .nav-btn.chat-btn {
-    background: var(--color-primary-dim, rgba(99, 102, 241, 0.15));
-    border-color: rgba(99, 102, 241, 0.3);
-    color: var(--color-primary-hover, #818cf8);
-  }
-
-  .nav-btn.chat-btn:hover {
-    background: rgba(99, 102, 241, 0.25);
-    border-color: var(--color-primary, #6366f1);
-    color: var(--color-fg, #fafafa);
-  }
-
-  .nav-btn.canvas-btn {
-    background: var(--color-primary-dim, rgba(99, 102, 241, 0.15));
-    border-color: rgba(99, 102, 241, 0.3);
-    color: var(--color-primary-hover, #818cf8);
-  }
-
-  .nav-btn.canvas-btn:hover {
-    background: rgba(99, 102, 241, 0.25);
+    background: rgba(99, 102, 241, 0.15);
     border-color: var(--color-primary, #6366f1);
     color: var(--color-fg, #fafafa);
   }
   
-  .input-section {
+  .nav-btn.primary {
+    background: var(--color-primary, #6366f1);
+    border-color: var(--color-primary, #6366f1);
+    color: white;
+  }
+  
+  .nav-btn.primary:hover {
+    background: var(--color-primary-hover, #818cf8);
+  }
+  
+  /* Center */
+  .center {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    align-items: center;
+    gap: 20px;
+    width: 100%;
+    max-width: 500px;
   }
   
-  .input-container {
-    position: relative;
+  /* Stats */
+  .stats {
+    display: flex;
+    gap: 24px;
+    animation: fade-in 0.5s ease-out;
+  }
+  
+  @keyframes fade-in {
+    from { opacity: 0; }
+  }
+  
+  .stat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-muted, #71717a);
+    font-size: 13px;
+  }
+  
+  .stat-value {
+    font-weight: 600;
+    color: var(--color-fg, #fafafa);
+  }
+  
+  .stat.streak {
+    color: #fb923c;
+  }
+  
+  .stat.streak .stat-value {
+    color: #fb923c;
+  }
+  
+  /* Input */
+  .input-card {
     display: flex;
     align-items: flex-start;
-    padding: 18px;
-    background: var(--color-surface, #121218);
+    gap: 12px;
+    width: 100%;
+    padding: 20px;
+    background: rgba(18, 18, 24, 0.8);
+    backdrop-filter: blur(12px);
     border: 1px solid var(--color-border, #1e1e26);
-    border-radius: 16px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 20px;
+    transition: all 0.2s;
   }
   
-  .input-container:focus-within,
-  .input-container.focused {
-    background: rgba(18, 18, 24, 0.95);
+  .input-card:focus-within {
     border-color: var(--color-primary, #6366f1);
-    box-shadow: 
-      0 0 0 3px rgba(99, 102, 241, 0.1),
-      0 10px 40px rgba(99, 102, 241, 0.1);
-  }
-
-  .search-mode .input-container {
-    border-color: var(--color-primary, #6366f1);
-  }
-
-  .search-mode .input-container:focus-within {
-    border-color: var(--color-primary-hover, #818cf8);
-    box-shadow: 
-      0 0 0 3px rgba(99, 102, 241, 0.15),
-      0 10px 40px rgba(99, 102, 241, 0.15);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1), 0 20px 50px rgba(0, 0, 0, 0.4);
   }
   
   .input-icon {
@@ -757,17 +640,13 @@
     transition: color 0.2s;
   }
   
-  .input-container:focus-within .input-icon {
-    color: var(--color-primary-hover, #818cf8);
-  }
-
-  .search-mode .input-container:focus-within .input-icon {
+  .input-card:focus-within .input-icon {
     color: var(--color-primary, #6366f1);
   }
   
   textarea {
     flex: 1;
-    min-height: 80px;
+    min-height: 60px;
     padding: 8px 0;
     background: transparent;
     border: none;
@@ -787,10 +666,9 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin-left: 12px;
   }
   
-  .file-btn {
+  .action-btn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -801,133 +679,58 @@
     border-radius: 10px;
     color: var(--color-muted, #71717a);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s;
   }
   
-  .file-btn:hover {
+  .action-btn:hover {
     background: rgba(99, 102, 241, 0.15);
-    color: var(--color-primary-hover, #818cf8);
     border-color: var(--color-primary, #6366f1);
-    transform: translateY(-1px);
+    color: var(--color-primary, #6366f1);
   }
   
-  .file-btn input {
+  .action-btn input {
     display: none;
   }
   
-  .submit-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
+  .action-btn.submit {
     background: var(--color-primary, #6366f1);
-    border: none;
-    border-radius: 10px;
-    color: var(--color-fg, #fafafa);
-    cursor: pointer;
-    transition: all 0.2s;
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+    border-color: var(--color-primary, #6366f1);
+    color: white;
   }
   
-  .submit-btn:hover:not(:disabled) {
+  .action-btn.submit:hover:not(:disabled) {
     background: var(--color-primary-hover, #818cf8);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
   }
   
-  .submit-btn:disabled {
-    opacity: 0.4;
+  .action-btn.submit:disabled {
+    opacity: 0.3;
     cursor: not-allowed;
-    box-shadow: none;
   }
   
-  .submit-btn :global(.spinner) {
-    animation: spin 1s linear infinite;
-  }
-  
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-  
-  .input-hints {
+  /* Hints */
+  .hints {
     display: flex;
-    gap: 12px;
-    padding-left: 58px;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-  }
-  
-  @media (max-width: 480px) {
-    .input-hints {
-      padding-left: 0;
-      justify-content: center;
-    }
-  }
-  
-  .hint {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    gap: 16px;
     font-size: 12px;
     color: var(--color-muted, #71717a);
   }
   
-  .hint kbd {
-    display: inline-block;
+  .hints span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  
+  .hints kbd {
     padding: 2px 6px;
-    background: var(--color-surface, #121218);
+    background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--color-border, #1e1e26);
     border-radius: 4px;
     font-family: inherit;
     font-size: 11px;
-    color: var(--color-muted, #71717a);
-  }
-
-  /* Quick Actions */
-  .quick-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: center;
-    animation: fade-in 0.3s ease-out;
   }
   
-  @media (max-width: 480px) {
-    .quick-actions {
-      gap: 8px;
-    }
-    
-    .quick-action {
-      flex: 1 1 calc(50% - 4px);
-      min-width: 0;
-      justify-content: center;
-      padding: 12px 10px;
-    }
-  }
-
-  .quick-action {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 18px;
-    background: var(--color-surface, #121218);
-    border: 1px solid var(--color-border, #1e1e26);
-    border-radius: 12px;
-    color: var(--color-muted, #71717a);
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .quick-action:hover {
-    background: var(--color-primary-dim, rgba(99, 102, 241, 0.15));
-    border-color: var(--color-primary, #6366f1);
-    color: var(--color-fg, #fafafa);
-    transform: translateY(-2px);
-  }
-  
+  /* Toast */
   .toast {
     position: fixed;
     bottom: 24px;
@@ -936,226 +739,39 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 14px 22px;
-    background: var(--color-surface, #121218);
-    border: 1px solid var(--color-border, #1e1e26);
-    border-radius: 12px;
-    font-size: 14px;
+    padding: 14px 24px;
+    background: rgba(18, 18, 24, 0.9);
     backdrop-filter: blur(12px);
-    z-index: 1000;
-    animation: slide-up 0.3s ease-out;
-  }
-  
-  .toast.success {
-    color: #22c55e;
-    border-color: rgba(34, 197, 94, 0.3);
-    box-shadow: 0 4px 20px rgba(34, 197, 94, 0.15);
-  }
-  
-  .toast.progress {
-    color: var(--color-primary-hover, #818cf8);
-    border-color: rgba(99, 102, 241, 0.3);
-  }
-  
-  .toast :global(.spinner) {
-    animation: spin 1s linear infinite;
-  }
-  
-  @keyframes slide-up {
-    from {
-      opacity: 0;
-      transform: translateX(-50%) translateY(20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
-  }
-  
-  .results-section,
-  .recent-section {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    animation: fade-in 0.3s ease-out;
-  }
-  
-  .results-section h3,
-  .recent-section h3 {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-muted, #71717a);
-    margin: 0;
-  }
-  
-  .results-section h3 :global(.spinner) {
-    animation: spin 1s linear infinite;
-  }
-  
-  .results-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  
-  .result-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 16px;
-    background: var(--color-surface, #121218);
-    border: 1px solid var(--color-border, #1e1e26);
+    border: 1px solid rgba(34, 197, 94, 0.3);
     border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-align: left;
-    animation: slide-in 0.3s ease-out backwards;
-  }
-
-  @keyframes slide-in {
-    from {
-      opacity: 0;
-      transform: translateX(-10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
-  
-  .result-item:hover {
-    background: var(--color-primary-dim, rgba(99, 102, 241, 0.15));
-    border-color: var(--color-primary, #6366f1);
-    transform: translateX(4px);
-  }
-  
-  .result-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    background: var(--color-primary-dim, rgba(99, 102, 241, 0.15));
-    border-radius: 8px;
-    color: var(--color-primary-hover, #818cf8);
-    flex-shrink: 0;
-  }
-  
-  .result-content {
-    flex: 1;
-    min-width: 0;
-  }
-  
-  .result-text {
-    display: block;
-    color: var(--color-fg, #fafafa);
+    color: #22c55e;
     font-size: 14px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-weight: 500;
+    z-index: 1000;
+    animation: toast-in 0.3s ease-out;
   }
   
-  .result-meta {
-    display: block;
-    font-size: 12px;
-    color: var(--color-muted, #71717a);
-    margin-top: 4px;
-    text-transform: capitalize;
+  .toast.uploading {
+    border-color: rgba(99, 102, 241, 0.3);
+    color: var(--color-primary, #6366f1);
   }
   
-  .result-item :global(.result-arrow) {
-    color: var(--color-muted, #71717a);
-    flex-shrink: 0;
-    transition: transform 0.2s;
-  }
-
-  .result-item:hover :global(.result-arrow) {
-    color: var(--color-primary-hover, #818cf8);
-    transform: translateX(2px);
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(20px); }
   }
   
-  .recent-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+  :global(.spin) {
+    animation: spin 1s linear infinite;
   }
   
-  .recent-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
-    background: var(--color-surface, #121218);
-    border: 1px solid var(--color-border, #1e1e26);
-    border-radius: 10px;
-    color: var(--color-muted, #71717a);
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s;
-    max-width: 200px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    animation: slide-in 0.3s ease-out backwards;
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
   
-  .recent-item:hover {
-    background: var(--color-primary-dim, rgba(99, 102, 241, 0.15));
-    color: var(--color-fg, #fafafa);
-    border-color: var(--color-primary, #6366f1);
-    transform: translateY(-2px);
-  }
-  
+  /* Mobile */
   @media (max-width: 480px) {
-    .recent-item {
-      max-width: 100%;
-      flex: 1 1 100%;
-    }
-  }
-  
-  /* Touch device optimizations */
-  @media (hover: none) {
-    .nav-btn:hover,
-    .quick-action:hover,
-    .result-item:hover,
-    .recent-item:hover {
-      transform: none;
-    }
-    
-    .nav-btn:active,
-    .quick-action:active,
-    .result-item:active,
-    .recent-item:active {
-      opacity: 0.8;
-    }
-  }
-  
-  /* High contrast mode support */
-  @media (prefers-contrast: high) {
-    .input-container {
-      border-color: var(--color-primary, #6366f1);
-    }
-    
-    .nav-btn {
-      border-color: var(--color-primary, #6366f1);
-    }
-  }
-  
-  /* Reduced motion support */
-  @media (prefers-reduced-motion: reduce) {
-    .result-item,
-    .recent-item,
-    .quick-action {
-      animation: none;
-    }
-    
-    .toast {
-      animation: none;
-    }
+    .nav-btn span { display: none; }
+    .nav { gap: 6px; }
+    .hints { flex-wrap: wrap; justify-content: center; }
   }
 </style>

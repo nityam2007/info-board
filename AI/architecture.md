@@ -6,10 +6,11 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    Client (Svelte)                  │
+│                    Client (Svelte 5)                │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │ Input Home  │  │ Inf. Canvas │  │  AI Chat    │  │
-│  │ (capture)   │  │ (browse)    │  │  (search)   │  │
+│  │ Input Home  │  │ 3D Globe    │  │  AI Chat    │  │
+│  │ (capture)   │  │ Canvas      │  │  (search)   │  │
+│  │ NO search   │  │ (browse)    │  │             │  │
 │  └─────────────┘  └─────────────┘  └─────────────┘  │
 └─────────────────────────────────────────────────────┘
                          │
@@ -34,7 +35,7 @@
                                       ▼
                             ┌─────────────────┐
                             │   Groq API      │
-                            │  (GPT-OSS-20B)  │
+                            │ (llama-3.1-70b) │
                             │  - tagging      │
                             │  - chat         │
                             └─────────────────┘
@@ -42,9 +43,21 @@
 
 ## Pages/Views
 
-1. **Input Home** - Black screen, single input box, capture + quick search (type `/` or `?` prefix)
-2. **Infinite Canvas** - Flat pinboard-style masonry, pan/zoom/keyboard spatial exploration, search = teleport
-3. **AI Chat** - Conversational search using user's data with source references
+| View | Purpose | Features |
+|------|---------|----------|
+| **Input Home** | Capture content | Minimal dark UI, single input, drag/drop, paste. NO search. Press `/` → Canvas |
+| **3D Globe Canvas** | Browse posts | Spherical projection, pan/zoom/fly, search teleport, 60% min zoom |
+| **AI Chat** | Conversational search | Chat interface with source references |
+
+## Globe Canvas Details
+
+- **Sphere projection**: Cards shrink/tilt toward edges like on a ball surface
+- **Zoom range**: 60% - 250% (MIN_ZOOM = 0.6, MAX_ZOOM = 2.5)
+- **Sphere radius**: 80% of viewport (fills most of screen)
+- **Center zone**: 30% radius at full size, then cosine falloff
+- **Edge scale**: Minimum 40-50% size (still readable)
+- **Max tilt**: 35-45° at edges
+- **Search**: Enter key cycles through results (teleport), click opens post
 
 ## Data Model
 
@@ -61,9 +74,13 @@ Post (immutable)
     ├── originalName?: string
     ├── mimeType?: string
     ├── size?: number
+    ├── width?: number (images)
+    ├── height?: number (images)
     ├── url?: string (for URL posts)
     ├── title?: string (extracted)
-    └── description?: string (extracted)
+    ├── description?: string (extracted)
+    ├── ogImage?: string (OG image URL)
+    └── ogImageLocal?: string (cached OG image)
 
 Tag (reference)
 ├── id: uuid
@@ -87,6 +104,7 @@ Task (reference)
 POST   /api/posts          - Create post (capture)
 GET    /api/posts          - List posts (with filters)
 GET    /api/posts/:id      - Get single post
+GET    /api/posts/stats    - Get dashboard stats (total, streak, by type)
 DELETE /api/posts/:id      - Soft delete post
 
 POST   /api/upload         - Upload file (base64)
