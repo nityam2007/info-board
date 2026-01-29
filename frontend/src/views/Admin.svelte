@@ -7,6 +7,13 @@
   }
   let { onnavigate }: Props = $props();
   
+  // Auth state
+  let requiresAuth = $state(false);
+  let isAuthenticated = $state(false);
+  let authChecking = $state(true);
+  let passwordInput = $state('');
+  let authError = $state('');
+  
   // State
   let activeTab = $state<'posts' | 'trash' | 'tags' | 'system'>('posts');
   let stats = $state<AdminStats | null>(null);
@@ -42,6 +49,56 @@
   let confirmAction = $state<(() => Promise<void>) | null>(null);
   let confirmMessage = $state('');
   
+  // Check auth status on mount
+  $effect(() => {
+    checkAuthStatus();
+  });
+  
+  async function checkAuthStatus() {
+    authChecking = true;
+    try {
+      const status = await api.admin.authStatus();
+      requiresAuth = status.requiresAuth;
+      isAuthenticated = !status.requiresAuth || api.admin.hasPassword();
+      
+      if (isAuthenticated) {
+        loadData();
+      }
+    } catch (e) {
+      // If auth check fails, assume auth is required
+      requiresAuth = true;
+      isAuthenticated = false;
+    } finally {
+      authChecking = false;
+    }
+  }
+  
+  async function handleLogin() {
+    authError = '';
+    api.admin.setPassword(passwordInput);
+    
+    try {
+      // Try to fetch stats to verify password
+      await api.admin.stats();
+      isAuthenticated = true;
+      loadData();
+    } catch (e) {
+      const err = e as Error & { requiresAuth?: boolean };
+      if (err.requiresAuth) {
+        authError = 'Invalid admin password';
+        api.admin.clearPassword();
+      } else {
+        authError = err.message;
+      }
+    }
+  }
+  
+  function handleLogout() {
+    api.admin.clearPassword();
+    isAuthenticated = false;
+    passwordInput = '';
+  }
+  
   // Load data
   async function loadData() {
     loading = true;
@@ -63,7 +120,13 @@
       totalPosts = postsRes.total;
       tags = tagsRes;
     } catch (e) {
-      error = (e as Error).message;
+      const err = e as Error & { requiresAuth?: boolean };
+      if (err.requiresAuth) {
+        isAuthenticated = false;
+        api.admin.clearPassword();
+      } else {
+        error = err.message;
+      }
     } finally {
       loading = false;
     }
@@ -77,26 +140,25 @@
     }
   }
   
-  // Initial load
   $effect(() => {
-    loadData();
-  });
-  
-  $effect(() => {
-    if (activeTab === 'trash') {
+    if (isAuthenticated && activeTab === 'trash') {
       loadDeletedPosts();
     }
   });
   
   // Reload when filters change
+  let filtersInitialized = false;
   $effect(() => {
     // Dependencies
     searchQuery;
     contentTypeFilter;
     showDeleted;
     currentPage;
-    // Reload
-    loadData();
+    // Only reload if already authenticated and initialized
+    if (isAuthenticated && filtersInitialized) {
+      loadData();
+    }
+    filtersInitialized = true;
   });
   
   // Selection handlers
@@ -290,38 +352,86 @@
 </script>
 
 <div class="admin-panel">
-  <!-- Header -->
-  <header class="admin-header">
-    <div class="header-left">
-      <button class="back-btn" onclick={() => onnavigate?.({ view: 'input' })}>
-        ← Back
+  {#if authChecking}
+    <div class="auth-loading">
+      <div class="spinner"></div>
+      <p>Loading...</p>
+    </div>
+  {:else if requiresAuth && !isAuthenticated}
+    <!-- Login Form -->
+    <div class="auth-container">
+      <div class="auth-card">
+        <div class="auth-header">
+          <span class="auth-icon">🔐</span>
+          <h1>Admin Access</h1>
+          <p>Enter the admin password to continue</p>
+        </div>
+        <form class="auth-form" onsubmit={(e) => { e.preventDefault(); handleLogin(); }}>
+          <input
+            type="password"
+            placeholder="Admin password"
+            bind:value={passwordInput}
+            class="auth-input"
+            autofocus
+          />
+          {#if authError}
+            <div class="auth-error">{authError}</div>
+          {/if}
+          <button type="submit" class="btn btn-primary auth-btn">Login</button>
+        </form>
+        <button class="back-link" onclick={() => onnavigate?.({ view: 'input' })}>
+          ← Back to Home
+        </button>
+      </div>
+    </div>
+  {:else}
+    <!-- Admin Panel Content -->
+    <!-- Header -->
+    <header class="admin-header">
+      <div class="header-left">
+        <button class="back-btn" onclick={() => onnavigate?.({ view: 'input' })}>
+          <span class="back-icon">←</span>
+          <span class="back-text">Back</span>
+        </button>
+        <h1>Admin Panel</h1>
+      </div>
+      <div class="header-right">
+        <div class="header-stats">
+          {#if stats}
+            <span class="stat"><span class="stat-value">{stats.totalPosts}</span> posts</span>
+            <span class="stat"><span class="stat-value">{stats.deletedPosts}</span> trash</span>
+            <span class="stat hide-mobile">{stats.storageUsed}</span>
+          {/if}
+        </div>
+        {#if requiresAuth}
+          <button class="logout-btn" onclick={handleLogout} title="Logout">
+            <span class="logout-icon">🚪</span>
+            <span class="logout-text">Logout</span>
+          </button>
+        {/if}
+      </div>
+    </header>
+    
+    <!-- Tabs -->
+    <nav class="tabs">
+      <button class="tab" class:active={activeTab === 'posts'} onclick={() => activeTab = 'posts'}>
+        <span class="tab-icon">📝</span>
+        <span class="tab-text">Posts</span>
       </button>
-      <h1>Admin Panel</h1>
-    </div>
-    <div class="header-stats">
-      {#if stats}
-        <span class="stat">{stats.totalPosts} posts</span>
-        <span class="stat">{stats.deletedPosts} in trash</span>
-        <span class="stat">{stats.storageUsed}</span>
-      {/if}
-    </div>
-  </header>
-  
-  <!-- Tabs -->
-  <nav class="tabs">
-    <button class="tab" class:active={activeTab === 'posts'} onclick={() => activeTab = 'posts'}>
-      Posts
-    </button>
-    <button class="tab" class:active={activeTab === 'trash'} onclick={() => activeTab = 'trash'}>
-      Trash {#if stats && stats.deletedPosts > 0}<span class="badge">{stats.deletedPosts}</span>{/if}
-    </button>
-    <button class="tab" class:active={activeTab === 'tags'} onclick={() => activeTab = 'tags'}>
-      Tags
-    </button>
-    <button class="tab" class:active={activeTab === 'system'} onclick={() => activeTab = 'system'}>
-      System
-    </button>
-  </nav>
+      <button class="tab" class:active={activeTab === 'trash'} onclick={() => activeTab = 'trash'}>
+        <span class="tab-icon">🗑️</span>
+        <span class="tab-text">Trash</span>
+        {#if stats && stats.deletedPosts > 0}<span class="badge">{stats.deletedPosts}</span>{/if}
+      </button>
+      <button class="tab" class:active={activeTab === 'tags'} onclick={() => activeTab = 'tags'}>
+        <span class="tab-icon">🏷️</span>
+        <span class="tab-text">Tags</span>
+      </button>
+      <button class="tab" class:active={activeTab === 'system'} onclick={() => activeTab = 'system'}>
+        <span class="tab-icon">⚙️</span>
+        <span class="tab-text">System</span>
+      </button>
+    </nav>
   
   <!-- Error display -->
   {#if error}
@@ -366,6 +476,7 @@
       {#if loading}
         <div class="loading">Loading...</div>
       {:else}
+        <!-- Desktop Table View -->
         <table class="data-table">
           <thead>
             <tr>
@@ -412,6 +523,48 @@
           </tbody>
         </table>
         
+        <!-- Mobile Card View -->
+        <div class="posts-mobile">
+          <div class="mobile-select-all">
+            <label class="checkbox-label">
+              <input type="checkbox" checked={selectAll} onchange={toggleSelectAll} />
+              Select all
+            </label>
+          </div>
+          {#each posts as post}
+            <div class="post-card" class:deleted={post.deleted_at}>
+              <div class="post-card-header">
+                <div class="post-card-type">
+                  <input 
+                    type="checkbox" 
+                    class="post-card-check"
+                    checked={selectedIds.has(post.id)} 
+                    onchange={() => toggleSelect(post.id)} 
+                  />
+                  <span class="type-icon">{getTypeIcon(post.content_type)}</span>
+                  <span class="source-badge">{post.source}</span>
+                  {#if post.deleted_at}
+                    <span class="deleted-badge">Deleted</span>
+                  {/if}
+                </div>
+              </div>
+              <div class="post-card-content">{truncate(post.content, 120)}</div>
+              <div class="post-card-meta">
+                <span>{formatDate(post.created_at)}</span>
+              </div>
+              <div class="post-card-actions">
+                <button class="btn btn-small" onclick={() => openEditModal(post)}>Edit</button>
+                {#if post.deleted_at}
+                  <button class="btn btn-small" onclick={() => restorePost(post.id)}>Restore</button>
+                  <button class="btn btn-small btn-danger" onclick={() => hardDeletePost(post.id)}>Delete</button>
+                {:else}
+                  <button class="btn btn-small btn-warning" onclick={() => softDeletePost(post.id)}>Trash</button>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+        
         <!-- Pagination -->
         <div class="pagination">
           <button 
@@ -444,6 +597,7 @@
           <p>Trash is empty</p>
         </div>
       {:else}
+        <!-- Desktop Table View -->
         <table class="data-table">
           <thead>
             <tr>
@@ -469,6 +623,28 @@
             {/each}
           </tbody>
         </table>
+        
+        <!-- Mobile Card View -->
+        <div class="posts-mobile">
+          {#each deletedPosts as post}
+            <div class="post-card">
+              <div class="post-card-header">
+                <div class="post-card-type">
+                  <span class="type-icon">{getTypeIcon(post.content_type)}</span>
+                  <span class="source-badge">{post.source}</span>
+                </div>
+              </div>
+              <div class="post-card-content">{truncate(post.content, 120)}</div>
+              <div class="post-card-meta">
+                <span>Deleted: {formatDate(post.deleted_at!)}</span>
+              </div>
+              <div class="post-card-actions">
+                <button class="btn btn-small" onclick={() => restorePost(post.id)}>Restore</button>
+                <button class="btn btn-small btn-danger" onclick={() => hardDeletePost(post.id)}>Delete Forever</button>
+              </div>
+            </div>
+          {/each}
+        </div>
       {/if}
     
     {:else if activeTab === 'tags'}
@@ -645,6 +821,7 @@
         </div>
       </div>
     </div>
+  {/if}
   {/if}
 </div>
 
@@ -1238,5 +1415,440 @@
   
   .form-info p {
     margin: 4px 0;
+  }
+  
+  /* Auth Styles */
+  .auth-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    gap: 16px;
+  }
+  
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--color-border, #1e1e26);
+    border-top-color: var(--color-primary, #6366f1);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  .auth-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  
+  .auth-card {
+    background: var(--color-surface, #121218);
+    border: 1px solid var(--color-border, #1e1e26);
+    border-radius: 16px;
+    padding: 32px;
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+  }
+  
+  .auth-header {
+    margin-bottom: 24px;
+  }
+  
+  .auth-icon {
+    font-size: 48px;
+    display: block;
+    margin-bottom: 16px;
+  }
+  
+  .auth-header h1 {
+    font-size: 24px;
+    margin: 0 0 8px;
+  }
+  
+  .auth-header p {
+    color: var(--color-muted, #71717a);
+    font-size: 14px;
+    margin: 0;
+  }
+  
+  .auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .auth-input {
+    width: 100%;
+    padding: 14px 16px;
+    background: var(--color-bg, #08080c);
+    border: 1px solid var(--color-border, #1e1e26);
+    border-radius: 8px;
+    color: var(--color-fg, #fafafa);
+    font-size: 16px;
+    text-align: center;
+  }
+  
+  .auth-input:focus {
+    outline: none;
+    border-color: var(--color-primary, #6366f1);
+  }
+  
+  .auth-error {
+    color: #ef4444;
+    font-size: 14px;
+    padding: 8px;
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: 6px;
+  }
+  
+  .auth-btn {
+    padding: 14px 24px;
+    font-size: 16px;
+  }
+  
+  .back-link {
+    background: transparent;
+    border: none;
+    color: var(--color-muted, #71717a);
+    font-size: 14px;
+    cursor: pointer;
+    margin-top: 20px;
+    padding: 8px;
+  }
+  
+  .back-link:hover {
+    color: var(--color-fg, #fafafa);
+  }
+  
+  /* Header improvements */
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  
+  .header-stats .stat-value {
+    color: var(--color-primary, #6366f1);
+    font-weight: 600;
+  }
+  
+  .logout-btn {
+    background: transparent;
+    border: 1px solid var(--color-border, #1e1e26);
+    color: var(--color-muted, #71717a);
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  
+  .logout-btn:hover {
+    border-color: #ef4444;
+    color: #ef4444;
+  }
+  
+  .back-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  
+  /* Tab improvements */
+  .tab-icon {
+    font-size: 16px;
+  }
+  
+  /* Mobile post cards (replaces table on small screens) */
+  .posts-mobile {
+    display: none;
+  }
+  
+  .mobile-select-all {
+    margin-bottom: 12px;
+    padding: 12px;
+    background: var(--color-surface, #121218);
+    border: 1px solid var(--color-border, #1e1e26);
+    border-radius: 8px;
+  }
+  
+  .post-card {
+    background: var(--color-surface, #121218);
+    border: 1px solid var(--color-border, #1e1e26);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  
+  .post-card.deleted {
+    opacity: 0.6;
+  }
+  
+  .post-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+  
+  .post-card-type {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .post-card-check {
+    margin-right: 8px;
+  }
+  
+  .post-card-content {
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+    word-break: break-word;
+  }
+  
+  .post-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--color-muted, #71717a);
+    margin-bottom: 12px;
+  }
+  
+  .post-card-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  
+  /* ========== RESPONSIVE STYLES ========== */
+  
+  /* Tablet and below */
+  @media (max-width: 768px) {
+    .admin-header {
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px 16px;
+    }
+    
+    .header-left {
+      width: 100%;
+      justify-content: space-between;
+    }
+    
+    .header-right {
+      width: 100%;
+      justify-content: space-between;
+    }
+    
+    .header-stats {
+      gap: 12px;
+    }
+    
+    .header-stats .stat {
+      font-size: 12px;
+    }
+    
+    h1 {
+      font-size: 18px;
+    }
+    
+    .tabs {
+      padding: 8px 12px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    .tab {
+      padding: 8px 12px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    
+    .admin-content {
+      padding: 16px;
+    }
+    
+    .toolbar {
+      gap: 8px;
+    }
+    
+    .search-input {
+      width: 100%;
+      order: -1;
+    }
+    
+    .filter-select {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .checkbox-label {
+      font-size: 12px;
+    }
+    
+    /* Hide table, show cards */
+    .data-table {
+      display: none;
+    }
+    
+    .posts-mobile {
+      display: block;
+    }
+    
+    .selection-count {
+      width: 100%;
+      text-align: center;
+      margin: 8px 0;
+    }
+    
+    .btn-warning,
+    .btn-danger {
+      flex: 1;
+      text-align: center;
+    }
+    
+    .pagination {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    
+    .pagination .btn {
+      flex: 1;
+    }
+    
+    .tags-grid {
+      grid-template-columns: 1fr;
+    }
+    
+    .tag-actions {
+      flex-wrap: wrap;
+    }
+    
+    .tag-actions .btn-small {
+      flex: 1;
+      text-align: center;
+    }
+    
+    .stats-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    
+    .stat-card {
+      padding: 12px;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+    }
+    
+    .action-buttons {
+      flex-direction: column;
+    }
+    
+    .action-buttons .btn {
+      width: 100%;
+    }
+    
+    .modal {
+      width: 95%;
+      max-height: 90vh;
+    }
+    
+    .modal-footer {
+      flex-direction: column-reverse;
+    }
+    
+    .modal-footer .btn {
+      width: 100%;
+    }
+  }
+  
+  /* Mobile - small screens */
+  @media (max-width: 480px) {
+    .back-text,
+    .logout-text {
+      display: none;
+    }
+    
+    .back-btn,
+    .logout-btn {
+      padding: 8px;
+    }
+    
+    .tab-text {
+      display: none;
+    }
+    
+    .tab {
+      padding: 10px 14px;
+    }
+    
+    .tab-icon {
+      font-size: 18px;
+    }
+    
+    .hide-mobile {
+      display: none;
+    }
+    
+    .header-stats {
+      gap: 8px;
+    }
+    
+    .header-stats .stat {
+      font-size: 11px;
+    }
+    
+    .stats-grid {
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+    
+    .stat-card {
+      padding: 10px 8px;
+    }
+    
+    .stat-value {
+      font-size: 20px;
+    }
+    
+    .stat-label {
+      font-size: 10px;
+    }
+    
+    .type-breakdown {
+      font-size: 13px;
+    }
+    
+    .type-row {
+      padding: 10px 12px;
+    }
+    
+    .auth-card {
+      padding: 24px 20px;
+    }
+    
+    .auth-icon {
+      font-size: 40px;
+    }
+    
+    .auth-header h1 {
+      font-size: 20px;
+    }
   }
 </style>

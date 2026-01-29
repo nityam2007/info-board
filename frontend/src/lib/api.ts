@@ -1,5 +1,8 @@
 const API_BASE = '/api';
 
+// Admin password storage key
+const ADMIN_PASSWORD_KEY = 'infoboard_admin_password';
+
 export interface Post {
   id: string;
   content: string;
@@ -94,6 +97,7 @@ interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+  requiresAuth?: boolean;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -110,6 +114,34 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
   
   const json: ApiResponse<T> = await res.json();
+  if (!json.success) throw new Error(json.error || 'Request failed');
+  return json.data as T;
+}
+
+// Admin-specific request that includes admin password header
+async function adminRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  const adminPassword = sessionStorage.getItem(ADMIN_PASSWORD_KEY) || '';
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(adminPassword ? { 'X-Admin-Password': adminPassword } : {}),
+  };
+  
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers,
+    credentials: 'include',
+    ...options,
+  });
+  
+  const json: ApiResponse<T> = await res.json();
+  
+  // Handle 401 - admin auth required
+  if (res.status === 401 || json.requiresAuth) {
+    const error = new Error(json.error || 'Admin authentication required') as Error & { requiresAuth: boolean };
+    error.requiresAuth = true;
+    throw error;
+  }
+  
   if (!json.success) throw new Error(json.error || 'Request failed');
   return json.data as T;
 }
@@ -305,8 +337,30 @@ export const api = {
   },
 
   admin: {
+    // Check if admin auth is required
+    authStatus: async () => {
+      const res = await fetch(`${API_BASE}/admin/auth-status`);
+      const json = await res.json();
+      return json.data as { requiresAuth: boolean };
+    },
+    
+    // Set admin password in session storage
+    setPassword: (password: string) => {
+      sessionStorage.setItem(ADMIN_PASSWORD_KEY, password);
+    },
+    
+    // Clear admin password
+    clearPassword: () => {
+      sessionStorage.removeItem(ADMIN_PASSWORD_KEY);
+    },
+    
+    // Check if password is stored
+    hasPassword: () => {
+      return !!sessionStorage.getItem(ADMIN_PASSWORD_KEY);
+    },
+    
     // Get admin stats
-    stats: () => request<AdminStats>('/admin/stats'),
+    stats: () => adminRequest<AdminStats>('/admin/stats'),
     
     // List posts with filters
     posts: (options: { 
@@ -322,74 +376,74 @@ export const api = {
       if (options.includeDeleted) params.set('includeDeleted', 'true');
       if (options.content_type) params.set('content_type', options.content_type);
       if (options.search) params.set('search', options.search);
-      return request<AdminPostsResult>(`/admin/posts?${params}`);
+      return adminRequest<AdminPostsResult>(`/admin/posts?${params}`);
     },
     
     // List deleted posts
     deletedPosts: (limit = 50, offset = 0) =>
-      request<Post[]>(`/admin/posts/deleted?limit=${limit}&offset=${offset}`),
+      adminRequest<Post[]>(`/admin/posts/deleted?limit=${limit}&offset=${offset}`),
     
     // Edit post
     updatePost: (id: string, data: { content?: string; content_type?: string; metadata?: Record<string, unknown> }) =>
-      request<Post>(`/admin/posts/${id}`, {
+      adminRequest<Post>(`/admin/posts/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
     
     // Hard delete (permanent)
     hardDelete: (id: string) =>
-      request<{ deleted: boolean; permanent: boolean }>(`/admin/posts/${id}/hard`, { method: 'DELETE' }),
+      adminRequest<{ deleted: boolean; permanent: boolean }>(`/admin/posts/${id}/hard`, { method: 'DELETE' }),
     
     // Restore soft-deleted post
     restore: (id: string) =>
-      request<{ restored: boolean }>(`/admin/posts/${id}/restore`, { method: 'POST' }),
+      adminRequest<{ restored: boolean }>(`/admin/posts/${id}/restore`, { method: 'POST' }),
     
     // Bulk soft delete
     bulkDelete: (ids: string[]) =>
-      request<{ deleted: number }>('/admin/posts/bulk-delete', {
+      adminRequest<{ deleted: number }>('/admin/posts/bulk-delete', {
         method: 'POST',
         body: JSON.stringify({ ids }),
       }),
     
     // Bulk hard delete
     bulkHardDelete: (ids: string[]) =>
-      request<{ deleted: number; permanent: boolean }>('/admin/posts/bulk-hard-delete', {
+      adminRequest<{ deleted: number; permanent: boolean }>('/admin/posts/bulk-hard-delete', {
         method: 'POST',
         body: JSON.stringify({ ids }),
       }),
     
     // Bulk restore
     bulkRestore: (ids: string[]) =>
-      request<{ restored: number }>('/admin/posts/bulk-restore', {
+      adminRequest<{ restored: number }>('/admin/posts/bulk-restore', {
         method: 'POST',
         body: JSON.stringify({ ids }),
       }),
     
     // Empty trash
     emptyTrash: () =>
-      request<{ deleted: number }>('/admin/posts/empty-trash', { method: 'POST' }),
+      adminRequest<{ deleted: number }>('/admin/posts/empty-trash', { method: 'POST' }),
     
     // Tags
-    tags: () => request<AdminTag[]>('/admin/tags'),
+    tags: () => adminRequest<AdminTag[]>('/admin/tags'),
     
     renameTag: (oldName: string, newName: string) =>
-      request<{ renamed: number }>('/admin/tags/rename', {
+      adminRequest<{ renamed: number }>('/admin/tags/rename', {
         method: 'POST',
         body: JSON.stringify({ oldName, newName }),
       }),
     
     mergeTags: (sourceTag: string, targetTag: string) =>
-      request<{ merged: number }>('/admin/tags/merge', {
+      adminRequest<{ merged: number }>('/admin/tags/merge', {
         method: 'POST',
         body: JSON.stringify({ sourceTag, targetTag }),
       }),
     
     deleteTag: (name: string) =>
-      request<{ deleted: number }>(`/admin/tags/name/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+      adminRequest<{ deleted: number }>(`/admin/tags/name/${encodeURIComponent(name)}`, { method: 'DELETE' }),
     
     // Database
-    databaseInfo: () => request<{ tables: string[]; counts: Record<string, number> }>('/admin/database'),
+    databaseInfo: () => adminRequest<{ tables: string[]; counts: Record<string, number> }>('/admin/database'),
     
-    vacuumDatabase: () => request<{ message: string }>('/admin/database/vacuum', { method: 'POST' }),
+    vacuumDatabase: () => adminRequest<{ message: string }>('/admin/database/vacuum', { method: 'POST' }),
   },
 };

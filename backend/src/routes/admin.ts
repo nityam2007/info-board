@@ -1,9 +1,45 @@
-import { Router, type Router as RouterType } from 'express';
+import { Router, type Router as RouterType, type Request, type Response, type NextFunction } from 'express';
 import { postsService } from '../services/posts.js';
 import { tagsService } from '../services/tags.js';
 import { getDatabase } from '../db/sqlite.js';
 
 export const adminRouter: RouterType = Router();
+
+// Admin authentication middleware
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || process.env.PASSWORD || '';
+
+function adminAuth(req: Request, res: Response, next: NextFunction) {
+  // Check X-Admin-Password header
+  const providedPassword = req.headers['x-admin-password'] as string;
+  
+  // If no admin password is configured, allow access (for development)
+  if (!ADMIN_PASSWORD) {
+    return next();
+  }
+  
+  if (!providedPassword || providedPassword !== ADMIN_PASSWORD) {
+    return res.status(401).json({ 
+      success: false, 
+      error: 'Admin authentication required',
+      requiresAuth: true 
+    });
+  }
+  
+  next();
+}
+
+// Check if admin auth is required (public endpoint)
+adminRouter.get('/auth-status', (req, res) => {
+  res.json({ 
+    success: true, 
+    data: { 
+      requiresAuth: !!ADMIN_PASSWORD 
+    } 
+  });
+});
+
+// Apply admin auth to all other routes
+adminRouter.use(adminAuth);
 
 // ============ POSTS ADMIN ============
 

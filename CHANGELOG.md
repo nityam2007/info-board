@@ -4,6 +4,45 @@
 
 ---
 
+## [2026-01-29] - Admin Authentication & Mobile Responsiveness
+
+### Added
+
+**Admin Authentication**
+- New `ADMIN_PASSWORD` environment variable (optional, falls back to `PASSWORD`)
+- Authentication middleware for all admin routes (`X-Admin-Password` header)
+- Public `/api/admin/auth-status` endpoint to check if auth is required
+- Frontend login form with password input
+- Session storage for admin password (persists during browser session)
+- Logout button in admin header
+
+**Mobile-First Admin Panel**
+- Fully responsive design for phones and tablets
+- Posts table converts to card layout on mobile (< 768px)
+- Trash table converts to card layout on mobile
+- Collapsible tabs show icons only on small screens (< 480px)
+- Back/Logout buttons become icon-only on mobile
+- Header stats stack vertically on tablet
+- Search input takes full width on mobile
+- Tags grid becomes single column on mobile
+- Stats grid adjusts to 3 columns on mobile
+- All modals become near full-width on mobile
+- Modal footers stack buttons vertically on mobile
+
+### Changed
+
+- Updated `api.ts` with `adminRequest()` function that includes auth header
+- Admin API methods now use `adminRequest` instead of `request`
+- `.env.example` updated with `ADMIN_PASSWORD` documentation
+
+### Files Modified
+- `backend/src/routes/admin.ts` - Added auth middleware and auth-status endpoint
+- `frontend/src/lib/api.ts` - Added adminRequest, auth methods, session storage
+- `frontend/src/views/Admin.svelte` - Auth flow, mobile cards, responsive CSS
+- `.env.example` - Added ADMIN_PASSWORD variable
+
+---
+
 ## [2026-01-29] - Admin Panel
 
 ### Added
