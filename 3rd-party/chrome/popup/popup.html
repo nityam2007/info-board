@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Info Board Capture</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">📋</span>
+        <span class="logo-text">Info Board</span>
+      </div>
+      <button class="settings-btn" id="settingsBtn" title="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"></path>
+        </svg>
+      </button>
+    </header>
+
+    <!-- Connection Status -->
+    <div class="status-bar" id="statusBar">
+      <span class="status-dot" id="statusDot"></span>
+      <span class="status-text" id="statusText">Checking connection...</span>
+    </div>
+
+    <!-- Current Page Section -->
+    <section class="section">
+      <div class="section-header">
+        <span class="section-icon">🌐</span>
+        <span class="section-title">Current Page</span>
+      </div>
+      <div class="page-info" id="pageInfo">
+        <div class="page-title" id="pageTitle">Loading...</div>
+        <div class="page-url" id="pageUrl"></div>
+      </div>
+      <button class="action-btn primary" id="capturePageBtn">
+        <span class="btn-icon">📄</span>
+        Save This Page
+      </button>
+    </section>
+
+    <!-- Quick Capture Section -->
+    <section class="section">
+      <div class="section-header">
+        <span class="section-icon">✏️</span>
+        <span class="section-title">Quick Note</span>
+      </div>
+      <textarea 
+        class="note-input" 
+        id="noteInput" 
+        placeholder="Type a note, paste a link, or anything..."
+        rows="3"
+      ></textarea>
+      <button class="action-btn primary" id="captureNoteBtn">
+        <span class="btn-icon">💾</span>
+        Save Note
+      </button>
+    </section>
+
+    <!-- Quick Actions -->
+    <section class="section">
+      <div class="section-header">
+        <span class="section-icon">⚡</span>
+        <span class="section-title">Quick Actions</span>
+      </div>
+      <div class="quick-actions">
+        <button class="quick-btn" id="captureSelectionBtn" title="Save selected text">
+          <span class="quick-icon">📝</span>
+          <span class="quick-label">Selection</span>
+        </button>
+        <button class="quick-btn" id="openBoardBtn" title="Open Info Board">
+          <span class="quick-icon">🎯</span>
+          <span class="quick-label">Open Board</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="shortcuts">
+        <span class="shortcut"><kbd>Ctrl+Shift+S</kbd> Page</span>
+        <span class="shortcut"><kbd>Ctrl+Shift+X</kbd> Selection</span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -17,7 +17,9 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    allowedHosts: ['demo.nsheth.in'],
   },
+  
   build: {
     outDir: 'dist',
     emptyOutDir: true,

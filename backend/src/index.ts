@@ -10,6 +10,7 @@ import { tasksRouter } from './routes/tasks.js';
 import { searchRouter } from './routes/search.js';
 import { aiRouter } from './routes/ai.js';
 import { uploadRouter } from './routes/upload.js';
+import { adminRouter } from './routes/admin.js';
 import exportRouter from './routes/export.js';
 
 // Validate config on startup
@@ -37,6 +38,7 @@ app.use('/api/tasks', tasksRouter);
 app.use('/api/search', searchRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/upload', uploadRouter);
+app.use('/api/admin', adminRouter);
 app.use('/api/export', exportRouter);
 
 // Error handler

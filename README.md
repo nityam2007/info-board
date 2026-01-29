@@ -77,12 +77,16 @@ pnpm dev:frontend  # http://localhost:5173
 │   │       └── AIChat.svelte     # Chat (~500 lines)
 │   └── package.json
 │
-└── AI/                    # AI workflow configuration
-    ├── claude.md          # Claude's persistent memory
-    ├── architecture.md    # System design
-    ├── agents.md          # Domain patterns
-    ├── mistakes.md        # Errors to avoid
-    └── ...
+├── AI/                    # AI workflow configuration
+│   ├── claude.md          # Claude's persistent memory
+│   ├── architecture.md    # System design
+│   ├── agents.md          # Domain patterns
+│   ├── mistakes.md        # Errors to avoid
+│   └── ...
+│
+└── 3rd-party/             # External integrations
+    ├── mobile/            # Android share intent app (planned)
+    └── chrome/            # Browser extension (planned)
 ```
 
 ## Tech Stack

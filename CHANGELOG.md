@@ -4,6 +4,176 @@
 
 ---
 
+## [2026-01-29] - Admin Panel
+
+### Added
+
+**Admin Panel View (`frontend/src/views/Admin.svelte`)**
+- New Admin view accessible from Home via Settings icon
+- Four tabs: Posts, Trash, Tags, System
+
+**Posts Management Tab**
+- Search posts by content
+- Filter by content type
+- Toggle to include deleted posts
+- Pagination (20 posts per page)
+- Edit post content inline
+- Soft delete (move to trash)
+- Hard delete (permanent)
+- Bulk selection with select all
+- Bulk soft delete / hard delete
+
+**Trash Tab**
+- View all soft-deleted posts
+- Restore individual posts
+- Permanently delete individual posts
+- Empty trash (bulk permanent delete)
+
+**Tags Tab**
+- View all tags with counts
+- See AI-suggested tag counts
+- Rename tags (all occurrences)
+- Merge tags (combine source into target)
+- Delete tags (all occurrences)
+
+**System Tab**
+- Statistics: total posts, deleted, storage used
+- Posts breakdown by type and source
+- Date range of posts
+- Database actions: Optimize (VACUUM), Export
+
+**Backend Admin Routes (`backend/src/routes/admin.ts`)**
+- `GET /api/admin/stats` - Admin statistics
+- `GET /api/admin/posts` - List posts with filters
+- `GET /api/admin/posts/deleted` - List deleted posts
+- `PUT /api/admin/posts/:id` - Edit post
+- `DELETE /api/admin/posts/:id/hard` - Permanent delete
+- `POST /api/admin/posts/:id/restore` - Restore deleted
+- `POST /api/admin/posts/bulk-delete` - Bulk soft delete
+- `POST /api/admin/posts/bulk-hard-delete` - Bulk permanent delete
+- `POST /api/admin/posts/bulk-restore` - Bulk restore
+- `POST /api/admin/posts/empty-trash` - Empty trash
+- `GET /api/admin/tags` - List tags with counts
+- `POST /api/admin/tags/rename` - Rename tag
+- `POST /api/admin/tags/merge` - Merge tags
+- `DELETE /api/admin/tags/name/:name` - Delete tag
+- `GET /api/admin/database` - Database info
+- `POST /api/admin/database/vacuum` - Optimize database
+
+**Admin Service Methods (`backend/src/services/posts.ts`)**
+- `hardDelete()` - Permanent delete with cascade
+- `bulkHardDelete()` - Bulk permanent delete
+- `bulkSoftDelete()` - Bulk soft delete
+- `update()` - Edit post content
+- `getByIdIncludeDeleted()` - Get post even if deleted
+- `listDeleted()` - List trashed posts
+- `restore()` - Restore single post
+- `bulkRestore()` - Bulk restore
+- `listAll()` - List with pagination and filters
+- `getAdminStats()` - Admin statistics
+
+### Files Modified
+- `backend/src/routes/admin.ts` (new)
+- `backend/src/services/posts.ts` - Added admin methods
+- `backend/src/index.ts` - Register admin router
+- `frontend/src/views/Admin.svelte` (new)
+- `frontend/src/lib/api.ts` - Added admin API methods
+- `frontend/src/App.svelte` - Added admin view routing
+- `frontend/src/views/InputHome.svelte` - Added admin button
+
+---
+
+## [2026-01-29] - URL Metadata & Shortcut Fixes
+
+### Fixed
+
+**URL Metadata Extraction - Fallback Titles**
+- Added `generateTitleFromUrl()` function for smart fallback titles
+- GitHub URLs now show "user/repo - GitHub" even if fetch fails
+- YouTube, Twitter/X get branded fallbacks
+- Generic URLs use "Last Path Part - domain.com" format
+- Improved headers: added Accept-Language, Accept-Encoding, Cache-Control
+- Timeout increased from 8s to 10s
+- Multiple title extraction patterns: og:title, twitter:title, `<title>` tag
+- Multiple favicon patterns for better detection
+- Always returns at least a fallback title (never empty)
+
+**Chrome Extension Keyboard Shortcuts**
+- Changed `Ctrl+Shift+S` → `Alt+Shift+B` (capture page, B=Board)
+- Changed `Ctrl+Shift+X` → `Alt+Shift+N` (capture selection, N=Note)
+- These unique shortcuts won't conflict with system/desktop shortcuts
+
+### Files Modified
+- `backend/src/services/upload.ts` - Added generateTitleFromUrl(), improved extractUrlMetadata()
+- `3rd-party/chrome/manifest.json` - New keyboard shortcuts
+- `3rd-party/chrome/README.md` - Updated shortcut documentation
+
+---
+
+## [2026-01-29] - Chrome Extension Complete
+
+### Added
+
+**Options Page (`3rd-party/chrome/options/`)**
+- `options.html` - Settings page with dark theme UI
+- `options.js` - Settings logic with chrome.storage.sync
+- `options.css` - Dark glassmorphism styling matching Info Board
+- Settings: API URL, password, notifications toggle
+- Test connection button with status indicator
+
+**Extension Icons (`3rd-party/chrome/icons/`)**
+- `icon.svg` - Source SVG (clipboard/board design with blue gradient)
+- `icon16.png`, `icon32.png`, `icon48.png`, `icon128.png` - All required sizes
+
+### Changed
+
+**README Updated (`3rd-party/chrome/README.md`)**
+- Complete installation instructions (load unpacked extension)
+- Configuration guide for settings
+- Full usage documentation (context menu, popup, keyboard shortcuts)
+- File structure reference
+- API endpoints used
+- Troubleshooting section
+
+### Chrome Extension Status: COMPLETE
+
+All files implemented:
+- `manifest.json` - Manifest v3 config
+- `background.js` - Service worker (API calls, context menus, keyboard commands)
+- `content.js` - Content script (quick note dialog, selection capture)
+- `content.css` - Dialog styles
+- `popup/popup.html`, `popup.js`, `popup.css` - Extension popup
+- `options/options.html`, `options.js`, `options.css` - Settings page
+- `icons/icon16.png`, `icon32.png`, `icon48.png`, `icon128.png` - Extension icons
+
+### Files Modified
+- `3rd-party/chrome/options/options.html` (new)
+- `3rd-party/chrome/options/options.js` (new)
+- `3rd-party/chrome/options/options.css` (new)
+- `3rd-party/chrome/icons/icon.svg` (new)
+- `3rd-party/chrome/icons/icon16.png` (new)
+- `3rd-party/chrome/icons/icon32.png` (new)
+- `3rd-party/chrome/icons/icon48.png` (new)
+- `3rd-party/chrome/icons/icon128.png` (new)
+- `3rd-party/chrome/README.md` (updated)
+
+---
+
+## [2026-01-29] - 3rd Party Integrations Directory
+
+### Added
+
+**3rd-party directory structure**
+- `3rd-party/README.md` - Overview of external integrations
+- `3rd-party/mobile/README.md` - Android share intent app (planned)
+- `3rd-party/chrome/README.md` - Browser extension (planned)
+
+### Files Modified
+- `README.md` - Added 3rd-party to project structure
+- Removed old "Mobile app (Share to App) Capture via An" file
+
+---
+
 ## [2026-01-29] - Zoom Limit & Larger Globe Area
 
 ### Changed

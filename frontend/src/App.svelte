@@ -2,14 +2,15 @@
   import InputHome from './views/InputHome.svelte';
   import Canvas from './views/Canvas.svelte';
   import AIChat from './views/AIChat.svelte';
+  import Admin from './views/Admin.svelte';
   
   // Router state
-  let currentView = $state<'input' | 'canvas' | 'chat'>('input');
+  let currentView = $state<'input' | 'canvas' | 'chat' | 'admin'>('input');
   let searchParam = $state('');
   let postIdParam = $state('');
   let transitioning = $state(false);
   
-  function handleNavigate(detail?: { search?: string; postId?: string; view?: 'input' | 'canvas' | 'chat' }) {
+  function handleNavigate(detail?: { search?: string; postId?: string; view?: 'input' | 'canvas' | 'chat' | 'admin' }) {
     // Start transition
     transitioning = true;
     
@@ -60,6 +61,8 @@
     />
   {:else if currentView === 'chat'}
     <AIChat onnavigate={handleNavigate} />
+  {:else if currentView === 'admin'}
+    <Admin onnavigate={handleNavigate} />
   {/if}
 </main>
 

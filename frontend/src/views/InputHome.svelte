@@ -4,11 +4,11 @@
   import { 
     Send, Grid3x3, Upload, Link2, 
     Loader2, Check, Bot, Keyboard,
-    Flame, Zap, Layers, Compass
+    Flame, Zap, Layers, Compass, Settings
   } from 'lucide-svelte';
   
   interface Props {
-    onnavigate?: (detail?: { search?: string; postId?: string; view?: 'input' | 'canvas' | 'chat' }) => void;
+    onnavigate?: (detail?: { search?: string; postId?: string; view?: 'input' | 'canvas' | 'chat' | 'admin' }) => void;
   }
   
   let { onnavigate }: Props = $props();
@@ -250,6 +250,9 @@
   <div class="main">
     <!-- Nav -->
     <nav class="nav">
+      <button class="nav-btn" onclick={() => onnavigate?.({ view: 'admin' })} title="Admin Panel">
+        <Settings size={18} />
+      </button>
       <button class="nav-btn" onclick={() => showShortcuts = true} title="Shortcuts (?)">
         <Keyboard size={18} />
       </button>

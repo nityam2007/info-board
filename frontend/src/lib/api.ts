@@ -56,6 +56,27 @@ export interface ImportResult {
   errors: string[];
 }
 
+export interface AdminStats {
+  totalPosts: number;
+  deletedPosts: number;
+  postsByType: Record<string, number>;
+  postsBySource: Record<string, number>;
+  storageUsed: string;
+  oldestPost: string | null;
+  newestPost: string | null;
+}
+
+export interface AdminPostsResult {
+  posts: Post[];
+  total: number;
+}
+
+export interface AdminTag {
+  name: string;
+  count: number;
+  ai_count: number;
+}
+
 export interface SearchFacets {
   content_types: { value: string; count: number }[];
   sources: { value: string; count: number }[];
@@ -281,5 +302,94 @@ export const api = {
       if (!res.ok) throw new Error('Import failed');
       return res.json() as Promise<ImportResult>;
     },
+  },
+
+  admin: {
+    // Get admin stats
+    stats: () => request<AdminStats>('/admin/stats'),
+    
+    // List posts with filters
+    posts: (options: { 
+      limit?: number; 
+      offset?: number; 
+      includeDeleted?: boolean; 
+      content_type?: string;
+      search?: string;
+    } = {}) => {
+      const params = new URLSearchParams();
+      if (options.limit) params.set('limit', String(options.limit));
+      if (options.offset) params.set('offset', String(options.offset));
+      if (options.includeDeleted) params.set('includeDeleted', 'true');
+      if (options.content_type) params.set('content_type', options.content_type);
+      if (options.search) params.set('search', options.search);
+      return request<AdminPostsResult>(`/admin/posts?${params}`);
+    },
+    
+    // List deleted posts
+    deletedPosts: (limit = 50, offset = 0) =>
+      request<Post[]>(`/admin/posts/deleted?limit=${limit}&offset=${offset}`),
+    
+    // Edit post
+    updatePost: (id: string, data: { content?: string; content_type?: string; metadata?: Record<string, unknown> }) =>
+      request<Post>(`/admin/posts/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    
+    // Hard delete (permanent)
+    hardDelete: (id: string) =>
+      request<{ deleted: boolean; permanent: boolean }>(`/admin/posts/${id}/hard`, { method: 'DELETE' }),
+    
+    // Restore soft-deleted post
+    restore: (id: string) =>
+      request<{ restored: boolean }>(`/admin/posts/${id}/restore`, { method: 'POST' }),
+    
+    // Bulk soft delete
+    bulkDelete: (ids: string[]) =>
+      request<{ deleted: number }>('/admin/posts/bulk-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      }),
+    
+    // Bulk hard delete
+    bulkHardDelete: (ids: string[]) =>
+      request<{ deleted: number; permanent: boolean }>('/admin/posts/bulk-hard-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      }),
+    
+    // Bulk restore
+    bulkRestore: (ids: string[]) =>
+      request<{ restored: number }>('/admin/posts/bulk-restore', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      }),
+    
+    // Empty trash
+    emptyTrash: () =>
+      request<{ deleted: number }>('/admin/posts/empty-trash', { method: 'POST' }),
+    
+    // Tags
+    tags: () => request<AdminTag[]>('/admin/tags'),
+    
+    renameTag: (oldName: string, newName: string) =>
+      request<{ renamed: number }>('/admin/tags/rename', {
+        method: 'POST',
+        body: JSON.stringify({ oldName, newName }),
+      }),
+    
+    mergeTags: (sourceTag: string, targetTag: string) =>
+      request<{ merged: number }>('/admin/tags/merge', {
+        method: 'POST',
+        body: JSON.stringify({ sourceTag, targetTag }),
+      }),
+    
+    deleteTag: (name: string) =>
+      request<{ deleted: number }>(`/admin/tags/name/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    
+    // Database
+    databaseInfo: () => request<{ tables: string[]; counts: Record<string, number> }>('/admin/database'),
+    
+    vacuumDatabase: () => request<{ message: string }>('/admin/database/vacuum', { method: 'POST' }),
   },
 };

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Info Board - Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Info Board Settings</h1>
+      <p class="subtitle">Configure your capture extension</p>
+    </header>
+
+    <main>
+      <form id="settings-form">
+        <!-- API URL -->
+        <div class="form-group">
+          <label for="apiUrl">API URL</label>
+          <input 
+            type="url" 
+            id="apiUrl" 
+            name="apiUrl" 
+            placeholder="http://localhost:3000"
+            required
+          >
+          <small>The URL of your Info Board server</small>
+        </div>
+
+        <!-- Password -->
+        <div class="form-group">
+          <label for="password">Password (optional)</label>
+          <div class="password-input">
+            <input 
+              type="password" 
+              id="password" 
+              name="password" 
+              placeholder="Enter your password"
+            >
+            <button type="button" id="toggle-password" class="icon-btn" title="Show password">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+          <small>Leave empty if your Info Board has no password</small>
+        </div>
+
+        <!-- Notifications -->
+        <div class="form-group checkbox-group">
+          <label class="checkbox-label">
+            <input 
+              type="checkbox" 
+              id="showNotifications" 
+              name="showNotifications"
+            >
+            <span class="checkbox-custom"></span>
+            <span>Show notifications</span>
+          </label>
+          <small>Display a notification when content is captured</small>
+        </div>
+
+        <!-- Buttons -->
+        <div class="button-group">
+          <button type="button" id="test-connection" class="btn btn-secondary">
+            Test Connection
+          </button>
+          <button type="submit" class="btn btn-primary">
+            Save Settings
+          </button>
+        </div>
+      </form>
+
+      <!-- Status message -->
+      <div id="status" class="status hidden"></div>
+
+      <!-- Connection test result -->
+      <div id="connection-status" class="connection-status hidden"></div>
+    </main>
+
+    <footer>
+      <a href="#" id="open-info-board">Open Info Board</a>
+      <span class="separator">|</span>
+      <span class="version">v1.0.0</span>
+    </footer>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

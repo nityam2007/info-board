@@ -169,6 +169,59 @@ export const uploadService = {
     return { type: 'text' };
   },
   
+  // Generate a readable title from URL as fallback
+  generateTitleFromUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.replace(/^www\./, '');
+      const pathname = urlObj.pathname;
+      
+      // Special handling for known sites
+      if (hostname.includes('github.com')) {
+        // github.com/user/repo -> user/repo
+        const parts = pathname.split('/').filter(Boolean);
+        if (parts.length >= 2) {
+          return `${parts[0]}/${parts[1]} - GitHub`;
+        } else if (parts.length === 1) {
+          return `${parts[0]} - GitHub`;
+        }
+        return 'GitHub';
+      }
+      
+      if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
+        return 'YouTube Video';
+      }
+      
+      if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
+        const parts = pathname.split('/').filter(Boolean);
+        if (parts.length >= 1) {
+          return `@${parts[0]} - Twitter/X`;
+        }
+        return 'Twitter/X';
+      }
+      
+      // Generic: use domain + cleaned path
+      if (pathname && pathname !== '/') {
+        // Clean up path: /blog/my-post -> Blog - My Post
+        const pathParts = pathname.split('/').filter(Boolean);
+        if (pathParts.length > 0) {
+          const lastPart = pathParts[pathParts.length - 1]
+            .replace(/[-_]/g, ' ')
+            .replace(/\.[^.]+$/, '') // Remove file extension
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+          return `${lastPart} - ${hostname}`;
+        }
+      }
+      
+      // Just the domain
+      return hostname.charAt(0).toUpperCase() + hostname.slice(1);
+    } catch {
+      return url;
+    }
+  },
+  
   // Extract URL metadata with OG image caching
   async extractUrlMetadata(url: string): Promise<{ 
     title?: string; 
@@ -178,34 +231,82 @@ export const uploadService = {
     favicon?: string;
     siteName?: string;
   }> {
+    // Generate fallback title from URL first
+    const fallbackTitle = this.generateTitleFromUrl(url);
+    
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
+      const timeout = setTimeout(() => controller.abort(), 10000);
       
       const response = await fetch(url, {
         signal: controller.signal,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
         },
       });
       
       clearTimeout(timeout);
       
-      if (!response.ok) return {};
+      if (!response.ok) {
+        console.warn(`URL fetch returned ${response.status} for ${url}`);
+        return { title: fallbackTitle };
+      }
       
       const html = await response.text();
       
-      // Extract title
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
-      const title = ogTitleMatch ? ogTitleMatch[1].trim() : (titleMatch ? titleMatch[1].trim() : undefined);
+      // Extract title - try multiple patterns
+      let title: string | undefined;
       
-      // Extract meta description
-      const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i)
-        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']description["']/i);
-      const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
-      const description = ogDescMatch ? ogDescMatch[1].trim() : (descMatch ? descMatch[1].trim() : undefined);
+      // 1. Try og:title first (most reliable)
+      const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
+      if (ogTitleMatch) {
+        title = ogTitleMatch[1].trim();
+      }
+      
+      // 2. Try twitter:title
+      if (!title) {
+        const twitterTitleMatch = html.match(/<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']twitter:title["']/i);
+        if (twitterTitleMatch) {
+          title = twitterTitleMatch[1].trim();
+        }
+      }
+      
+      // 3. Try <title> tag
+      if (!title) {
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        if (titleMatch) {
+          title = titleMatch[1].trim();
+        }
+      }
+      
+      // 4. Use fallback if still no title
+      if (!title || title.length === 0) {
+        title = fallbackTitle;
+      }
+      
+      // Extract meta description - try multiple patterns
+      let description: string | undefined;
+      
+      const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:description["']/i);
+      if (ogDescMatch) {
+        description = ogDescMatch[1].trim();
+      }
+      
+      if (!description) {
+        const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']description["']/i);
+        if (descMatch) {
+          description = descMatch[1].trim();
+        }
+      }
       
       // Extract OG image
       const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i)
@@ -221,13 +322,27 @@ export const uploadService = {
       }
       
       // Extract site name
-      const siteNameMatch = html.match(/<meta[^>]*property=["']og:site_name["'][^>]*content=["']([^"']+)["']/i);
+      const siteNameMatch = html.match(/<meta[^>]*property=["']og:site_name["'][^>]*content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:site_name["']/i);
       const siteName = siteNameMatch ? siteNameMatch[1].trim() : undefined;
       
-      // Extract favicon
-      const faviconMatch = html.match(/<link[^>]*rel=["'](?:shortcut )?icon["'][^>]*href=["']([^"']+)["']/i)
-        || html.match(/<link[^>]*href=["']([^"']+)["'][^>]*rel=["'](?:shortcut )?icon["']/i);
-      let favicon = faviconMatch ? faviconMatch[1].trim() : undefined;
+      // Extract favicon - try multiple patterns
+      let favicon: string | undefined;
+      const faviconPatterns = [
+        /<link[^>]*rel=["']icon["'][^>]*href=["']([^"']+)["']/i,
+        /<link[^>]*href=["']([^"']+)["'][^>]*rel=["']icon["']/i,
+        /<link[^>]*rel=["']shortcut icon["'][^>]*href=["']([^"']+)["']/i,
+        /<link[^>]*rel=["']apple-touch-icon["'][^>]*href=["']([^"']+)["']/i,
+      ];
+      
+      for (const pattern of faviconPatterns) {
+        const match = html.match(pattern);
+        if (match) {
+          favicon = match[1].trim();
+          break;
+        }
+      }
+      
       if (favicon && !favicon.startsWith('http')) {
         const urlObj = new URL(url);
         favicon = favicon.startsWith('/') 
@@ -252,7 +367,8 @@ export const uploadService = {
       return { title, description, ogImage, ogImageLocal, favicon, siteName };
     } catch (error) {
       console.error('Failed to extract URL metadata:', error);
-      return {};
+      // Always return at least a fallback title
+      return { title: fallbackTitle };
     }
   },
   
