@@ -4,6 +4,58 @@
 
 ---
 
+## [2026-01-29] - Capacitor Mobile App
+
+### Added
+
+**Mobile App (`3rd-party/mobile/`)**
+Complete Capacitor-based mobile app for capturing content from Android/iOS.
+
+**Files Created:**
+- `src/index.html` - App structure with settings and main screens
+- `src/app.css` - Dark theme styles matching Info Board aesthetic
+- `src/app.js` - JavaScript logic with:
+  - Capacitor Preferences for secure settings storage
+  - API client with Bearer auth
+  - Tab switching (Note/URL/File)
+  - File upload with FileReader base64 encoding
+  - Recent posts display with relative timestamps
+  - Toast notifications
+  - Share intent handling (receives shared text/URLs from other apps)
+- `src/manifest.json` - PWA manifest with share_target support
+- `src/icon.svg` - Custom app icon (board with tiles design)
+- `README.md` - Build instructions for Android/iOS
+- `package.json` - Capacitor 6 dependencies
+- `capacitor.config.ts` - App configuration (com.infoboard.app)
+
+**Features:**
+- Connect to any Info Board server with URL and password
+- Capture text notes, URLs with metadata, files
+- View capture stats (total posts, streak, today count)
+- See recent captures with type icons and thumbnails
+- Receive shared content from other Android apps
+- Works offline with cached settings
+- Fast builds (~10-30 seconds vs Flutter's 3-4 minutes)
+
+**API Endpoints Used:**
+- `GET /api/posts/stats` - Stats display
+- `GET /api/posts?limit=10` - Recent posts
+- `POST /api/posts` - Create text post
+- `POST /api/upload/url` - Save URL with metadata
+- `POST /api/upload` - Upload file (base64)
+
+### Files Modified
+- `3rd-party/mobile/src/index.html` (created earlier)
+- `3rd-party/mobile/src/app.css` (new)
+- `3rd-party/mobile/src/app.js` (new)
+- `3rd-party/mobile/src/manifest.json` (new)
+- `3rd-party/mobile/src/icon.svg` (new)
+- `3rd-party/mobile/README.md` (new)
+- `3rd-party/mobile/package.json` (created earlier)
+- `3rd-party/mobile/capacitor.config.ts` (created earlier)
+
+---
+
 ## [2026-01-29] - Admin Authentication & Mobile Responsiveness
 
 ### Added
