@@ -628,9 +628,19 @@
     // Keyboard events
     window.addEventListener('keydown', handleKeyDown);
     
+    // Touch and wheel events with { passive: false } to allow preventDefault
+    containerEl?.addEventListener('wheel', handleWheel, { passive: false });
+    containerEl?.addEventListener('touchstart', handleTouchStart, { passive: true });
+    containerEl?.addEventListener('touchmove', handleTouchMove, { passive: false });
+    containerEl?.addEventListener('touchend', handleTouchEnd, { passive: true });
+    
     return () => {
       cancelAnimationFrame(animationId);
       window.removeEventListener('keydown', handleKeyDown);
+      containerEl?.removeEventListener('wheel', handleWheel);
+      containerEl?.removeEventListener('touchstart', handleTouchStart);
+      containerEl?.removeEventListener('touchmove', handleTouchMove);
+      containerEl?.removeEventListener('touchend', handleTouchEnd);
       resizeObserver.disconnect();
     };
   });
@@ -644,11 +654,7 @@
   onpointermove={handlePointerMove}
   onpointerup={handlePointerUp}
   onpointercancel={handlePointerUp}
-  onwheel={handleWheel}
   onclick={handleCanvasClick}
-  ontouchstart={handleTouchStart}
-  ontouchmove={handleTouchMove}
-  ontouchend={handleTouchEnd}
 >
   <!-- Parallax Background Layers -->
   <div class="parallax-layer layer-1" style="transform: translate({-camera.x * 0.1}px, {-camera.y * 0.1}px)"></div>
