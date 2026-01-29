@@ -4,6 +4,359 @@
 
 ---
 
+## [2026-01-29] - PostDetail Redesign: Wider 2-Column Read-Only Layout
+
+### Changed
+
+**PostDetail Component - Complete Layout Overhaul**
+- **Wider modal**: 520px → 900px max-width for media types
+- **2-column layout (40/60)**: Media on left, details on right for image/video/url
+- **Read-only tags**: Removed add tag input and remove buttons (use Admin panel for editing)
+- **Fixed download button**: Now actually downloads files
+
+**Layout by Content Type:**
+
+| Type | Layout |
+|------|--------|
+| Image | 2-col: preview (40%) \| filename + AI + tags (60%) |
+| Video | 2-col: video player (40%) \| filename + AI + tags (60%) |
+| URL | 2-col: preview image (40%) \| title + desc + link + AI + tags (60%) |
+| Text | 1-col: full-width paper background |
+| Audio | 1-col: audio player + transcript + tags |
+| File | 1-col: icon + name + download button + tags |
+
+**Mobile Responsive:**
+- On screens < 640px, 2-column layout stacks vertically
+- Media appears above details for better mobile UX
+
+### Fixed
+
+**PostDetail Modal Interaction Issues**
+- **Buttons not clickable**: Fixed z-index and pointer-events on overlay and buttons
+- **Background scrolling**: Canvas now ignores pointer events when modal is open
+- **Text not selectable**: Added `user-select: text` to all text content
+- **Modal z-index**: Increased from 1000 to 9999 to ensure it's on top
+- **Event propagation**: Modal now stops all pointer events from reaching canvas
+
+**Canvas Event Handling**
+- `handlePointerDown`: Returns early if modal is open
+- `handlePointerMove`: Returns early if modal is open  
+- `handleWheel`: Returns early if modal is open (no zoom while viewing detail)
+
+### Removed
+
+- `addTag()` function - tags managed via Admin panel
+- `removeTag()` function - tags managed via Admin panel
+- `newTag` state variable
+- Tag input field and add button
+- X buttons on individual tags
+
+### Files Modified
+- `frontend/src/components/PostDetail.svelte` - Complete rewrite with new layout + interaction fixes
+- `frontend/src/views/Canvas.svelte` - Added modal-open checks to pointer handlers
+
+---
+
+## [2026-01-29] - AI Analysis Scripts & Proprietary License
+
+### Added
+
+**Master Analysis Script (`analyze-all.ts`)**
+- New `backend/src/scripts/analyze-all.ts` - runs all 4 analysis scripts in sequence
+- Analyzes: images, text, URLs, audio
+- Shows combined cost estimate before running
+- Prints unified summary table at end
+- Supports all flags: `--force`, `--limit N`, `--batch N`, `--dry-run`
+
+**Updated Image Analysis Script**
+- `backend/src/scripts/analyze-images.ts` now has feature parity with other scripts:
+  - Added `--batch N` flag for parallel processing (default: 2)
+  - Added `--dry-run` flag to preview without changes
+  - Added cost estimates based on Groq vision pricing
+  - Uses `processBatch()` helper for concurrent processing
+
+**Analysis Scripts Summary**
+
+| Script | Content Type | Features |
+|--------|--------------|----------|
+| `analyze-images.ts` | Images | OCR + description + tags |
+| `analyze-text.ts` | Text posts | Tags + summary |
+| `analyze-urls.ts` | URLs | Tags + summary + thumbnail analysis (YT/Reddit) |
+| `analyze-audio.ts` | Audio files | Transcription + tags + summary |
+| `analyze-all.ts` | ALL | Master script, runs all above |
+
+**Usage Examples:**
+```bash
+# Dry run to see what would be processed
+npx tsx src/scripts/analyze-all.ts --dry-run
+
+# Process with cost estimate, limit 10 per type
+npx tsx src/scripts/analyze-all.ts --limit 10
+
+# Force re-analyze everything
+npx tsx src/scripts/analyze-all.ts --force
+```
+
+**Proprietary License**
+- Created strict proprietary `LICENSE` file
+- Source viewable for evaluation only
+- NO rights granted for use, copying, modification, or distribution
+- Unauthorized use constitutes copyright infringement
+- Explicit written permission required for any use
+
+### Fixed
+
+**Canvas Modal Now Uses PostDetail Component**
+- Canvas.svelte was using its own inline modal that lacked Tags, Tasks, and AI features
+- Now uses the full `PostDetail` component with all features:
+  - Tags section (view, add, remove tags)
+  - Tasks section (view, add, toggle, remove tasks)
+  - AI Suggestions button
+  - AI metadata display (description, OCR, summary, transcription)
+- All 653 AI-generated tags now visible when clicking any post
+
+**PostDetail AI Metadata Display**
+- AI Summary now shows for **text posts** (previously only images showed AI analysis)
+- AI Summary now shows for **URL posts**
+- Thumbnail OCR and Description now show for **YouTube/Reddit URLs**
+- Audio transcription and summary now display properly
+- All content types now show their AI-generated metadata in the detail view
+
+**AI Metadata Display Summary:**
+
+| Content Type | AI Metadata Shown |
+|--------------|-------------------|
+| Images | OCR text, AI description |
+| Text | AI summary |
+| URLs | AI summary, thumbnail OCR/description (YT/Reddit) |
+| Audio | Transcription, AI summary |
+
+### Files Created
+- `backend/src/scripts/analyze-all.ts` - Master analysis script
+- `LICENSE` - Proprietary software license
+
+### Files Modified
+- `backend/src/scripts/analyze-images.ts` - Added batch/cost/dry-run features
+- `frontend/src/components/PostDetail.svelte` - Added AI metadata display for text, URL, audio posts
+- `frontend/src/views/Canvas.svelte` - Now uses PostDetail component instead of inline modal
+
+---
+
+## [2026-01-29] - Reddit Support & YouTube/Reddit Image Analysis
+
+### Added
+
+**Reddit Metadata Extraction**
+- New `extractRedditMetadata()` function using Reddit's JSON API (no auth needed)
+- Supports reddit.com URLs and redd.it short URLs
+- Extracts: title, selftext (post content), author, subreddit, score
+- Handles image posts, galleries, and text posts
+- Multiple image URLs extracted from gallery posts (`imageUrls` array)
+- Fallback handling for blocked/failed requests
+
+**Vision AI for YouTube & Reddit Thumbnails**
+- YouTube thumbnails now analyzed with vision AI (OCR + description)
+- Reddit images now analyzed with vision AI (OCR + description)
+- Image tags merged with URL metadata tags
+- Stored in metadata: `ocrText`, `aiDescription`
+
+### Enhanced URL Metadata Storage
+- New metadata fields for platform-specific data:
+  - `author` - Post/video author (e.g., "u/username", "Channel Name")
+  - `platform` - Platform identifier ("youtube", "reddit", "twitter", etc.)
+  - `subreddit` - Reddit subreddit (e.g., "r/programming")
+  - `score` - Reddit post score
+
+### Platform Support Summary
+
+| Platform | Metadata | Image Analysis | Notes |
+|----------|----------|----------------|-------|
+| **YouTube** | oEmbed API (title, author) | Thumbnail analyzed | maxresdefault.jpg |
+| **Reddit** | JSON API (full post data) | Post images analyzed | Galleries, selftext |
+| **Twitter/X** | og:tags + fallback | - | Limited by auth |
+| **Instagram** | og:tags + fallback | - | Login wall issues |
+| **Pinterest** | og:tags | - | |
+
+### Files Modified
+- `backend/src/services/upload.ts`:
+  - Added `extractRedditMetadata()` function
+  - Updated `extractPlatformMetadata()` to route Reddit URLs
+  - Added `imageUrls` to platform metadata return type
+- `backend/src/routes/upload.ts`:
+  - Added `analyzeImage` import
+  - YouTube/Reddit: analyze cached thumbnail with vision AI
+  - Store `ocrText`, `aiDescription` in URL metadata
+  - Store platform-specific fields (author, platform, subreddit, score)
+
+---
+
+## [2026-01-29] - Mobile App File Upload Fix
+
+### Fixed
+
+**Mobile App File Upload Was Broken**
+- Mobile app was sending `{ data: base64 }` but backend expects `{ file: base64 }`
+- Changed `data` field to `file` in `createFilePost()` function
+- Added `source: 'mobile'` to all post types for tracking
+- Added fallback `mimeType: 'application/octet-stream'` if file.type is empty
+
+### AI Analysis Trigger Summary
+
+| Client | Text | URL | Files/Images |
+|--------|------|-----|--------------|
+| **Web Frontend** | `posts.ts` - AI tags | `upload.ts` - AI tags | `upload.ts` - AI OCR/tags |
+| **Mobile App** | `posts.ts` - AI tags | `upload.ts` - AI tags | `upload.ts` - AI OCR/tags (FIXED) |
+| **Chrome Extension** | `posts.ts` - AI tags | `upload.ts` - AI tags | `upload.ts` - AI OCR/tags |
+
+### Files Modified
+- `3rd-party/mobile/src/app.js`:
+  - Fixed `createFilePost()`: changed `data` to `file`
+  - Added `source: 'mobile'` to all create functions
+
+---
+
+## [2026-01-29] - AI Auto-Analysis for Audio & URL Content Types
+
+### Added
+
+**Audio AI Analysis (Transcription + Tags)**
+- Audio files now auto-transcribed using Whisper model on upload
+- Transcription text stored in `metadata.transcription`
+- AI analyzes transcription to generate tags and summary
+- Tags auto-added with `is_ai_suggested: true`
+- Summary stored in `metadata.aiSummary`
+
+**URL AI Analysis (Tags from Metadata)**
+- URLs now analyzed by AI after metadata extraction
+- AI reads title + description to suggest relevant tags
+- Tags auto-added with `is_ai_suggested: true`
+- AI summary stored in `metadata.aiSummary`
+
+**Enhanced Social Media Metadata Extraction**
+- New `extractPlatformMetadata()` function for platform-specific handling
+- **YouTube**: Uses oEmbed API (no auth needed), extracts video title, author, thumbnail
+- **Twitter/X**: Extracts username, post content from og:tags, fallback for blocked requests
+- **Instagram**: Handles posts, reels, profiles with username extraction
+- **Pinterest**: Extracts pin metadata with og:tags
+- All platforms include: `author`, `platform`, `siteName` fields
+
+### Files Modified
+- `backend/src/routes/upload.ts`:
+  - Added `analyzeAudio`, `analyzeUrl` imports from ai.ts
+  - Added audio AI analysis block (transcription + tags)
+  - Added URL AI analysis block (tags from metadata)
+  - Updated metadata to include `transcription` and `aiSummary`
+- `backend/src/services/upload.ts`:
+  - Added `extractPlatformMetadata()` router function
+  - Added `extractYouTubeMetadata()` using oEmbed API
+  - Added `extractTwitterMetadata()` with og:tag fallback
+  - Added `extractInstagramMetadata()` for posts/reels/profiles
+  - Added `extractPinterestMetadata()` for pins
+  - Updated `extractUrlMetadata()` return type to include `author`, `platform`
+
+### AI Auto-Analysis Summary
+
+| Content Type | Analysis | Storage |
+|--------------|----------|---------|
+| Images | OCR + Description + Tags | `ocrText`, `aiDescription`, tags |
+| Text | Tags + Summary | `aiSummary`, tags |
+| Audio | Transcription + Tags + Summary | `transcription`, `aiSummary`, tags |
+| URLs | Tags + Summary (from metadata) | `aiSummary`, tags |
+| Video | None (excluded per user request) | - |
+| Files | None (excluded per user request) | - |
+
+---
+
+## [2026-01-29] - AVIF/HEIF Image Support for AI Analysis
+
+### Fixed
+
+**Image Analysis Now Supports AVIF/HEIF Images**
+- YouTube and other sites serve AVIF images (often misnamed as .jpg)
+- Groq vision API doesn't support AVIF/HEIF formats
+- Added `sharp` library to detect actual image format (not just extension)
+- Automatically converts AVIF/HEIF to PNG before sending to API
+- Previously failing images now analyze successfully
+
+### Files Modified
+- `backend/src/services/ai.ts` - Added sharp import, format detection, AVIF/HEIF conversion
+- `backend/package.json` - Added sharp dependency
+
+---
+
+## [2026-01-29] - Frontend AI Metadata Display
+
+### Added
+
+**AI Metadata Display in All Detail Views**
+- **PostDetail.svelte**: Added AI Analysis section showing:
+  - AI Description with Eye icon
+  - OCR/Extracted Text with FileSearch icon in monospace block
+  - Bot icon indicator on AI-suggested tags
+  - Purple gradient styling for AI sections
+
+- **Canvas.svelte** (modal only): Added AI section in image modal
+  - Shows AI Description and OCR text when viewing image details
+  - Clean styling matching overall design
+
+- **Admin.svelte**: Added AI metadata to edit/view post modal
+  - Shows AI Description with Eye icon
+  - Shows OCR Text with FileSearch icon in scrollable monospace block
+  - Bot icon for section header
+  - Purple gradient section styling consistent with other views
+  - Uses lucide-svelte icons (Eye, FileSearch, Bot) - no emojis
+
+### Updated Documentation
+
+**AI/architecture.md**
+- Added `aiDescription` and `ocrText` to metadata fields documentation
+- Updated Groq API diagram to show text/vision models
+
+**AI/agents.md**
+- Updated AI Integration section with vision model details
+- Added `analyzeImage()` pattern with Llama 4 Scout
+- Documented AI metadata fields (aiDescription, ocrText, is_ai_suggested)
+- Added audio model placeholder (whisper-large-v3-turbo)
+
+### Design
+- AI sections use purple gradient: `rgba(139, 92, 246, 0.1)` to `rgba(99, 102, 241, 0.1)`
+- Purple accent color: `#a78bfa`
+- OCR text displayed in monospace with dark background
+- Icons from lucide-svelte: Eye, FileSearch, Bot
+
+### Files Modified
+- `frontend/src/components/PostDetail.svelte` - AI analysis section
+- `frontend/src/views/Canvas.svelte` - AI section in modal
+- `frontend/src/views/Admin.svelte` - AI metadata in edit modal with icons
+- `AI/architecture.md` - Metadata fields documentation
+- `AI/agents.md` - Vision/image analysis capabilities
+
+---
+
+## [2026-01-29] - Image Analysis Script Fix & Model Enable
+
+### Fixed
+
+**Analysis Script Database Compatibility**
+- Fixed `no such column: updated_at` error in analyze-images.ts
+- Removed `updated_at` column update since posts table doesn't have it
+
+**Vision Model Access**
+- Llama 4 Scout vision model requires org-level permission in Groq console
+- Added note in ai.ts about enabling model at https://console.groq.com/settings/limits
+
+### Tested
+- Successfully analyzed 9/11 images (2 failed: AVIF files misnamed as .jpg)
+- OCR extraction working for screenshots, slides, documents
+- AI descriptions generated for all image types
+- Auto-tagging added 35+ tags across images
+
+### Files Modified
+- `backend/src/scripts/analyze-images.ts` - Removed updated_at column reference
+- `backend/src/services/ai.ts` - Added comment about model permissions
+
+---
+
 ## [2026-01-29] - AI Image Analysis (OCR + Description)
 
 ### Added

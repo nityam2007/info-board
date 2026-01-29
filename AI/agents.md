@@ -58,13 +58,20 @@ router.post('/endpoint', async (req, res) => {
 </script>
 ```
 
-**Three Views:**
+**Four Main Views:**
 
 | View | File | Lines | Purpose |
 |------|------|-------|---------|
 | InputHome | `views/InputHome.svelte` | ~350 | Minimal capture, no search |
 | Canvas | `views/Canvas.svelte` | ~1640 | 3D globe browse, search teleport |
 | AIChat | `views/AIChat.svelte` | ~500 | Conversational search |
+| Admin | `views/Admin.svelte` | ~900 | Content management |
+
+**Key Components:**
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| PostDetail | `components/PostDetail.svelte` | Read-only post detail modal |
 
 **Forbidden:** React/Vue/Angular, Old Svelte 4 syntax (`export let`)
 
@@ -118,7 +125,7 @@ const maxTilt = 35 + (1 - zoomFactor) * 10;
 | Left-drag | Pan canvas |
 | Scroll wheel | Zoom toward cursor |
 | Click empty | Fly to location |
-| Click card | Open post modal |
+| Click card | Open PostDetail modal |
 | WASD/Arrows | Pan camera |
 | +/- | Zoom |
 | / | Focus search |
@@ -133,6 +140,13 @@ const maxTilt = 35 + (1 - zoomFactor) * 10;
 - Click card opens it
 - `highlightedPostId` shows pulsing glow on found card
 
+**Modal Isolation (CRITICAL):**
+When `selectedPost` is set, Canvas must:
+- Return early from `handlePointerDown`
+- Return early from `handlePointerMove`
+- Return early from `handleWheel`
+- NOT capture pointer events
+
 **Performance:**
 - Frustum culling (only render visible cards ± 300px)
 - CSS `will-change` for transforms
@@ -143,13 +157,90 @@ const maxTilt = 35 + (1 - zoomFactor) * 10;
 
 ---
 
+## PostDetail Component
+
+**Scope:** Read-only modal for viewing post details
+
+**File:** `frontend/src/components/PostDetail.svelte`
+
+**Layout:**
+```
+2-COLUMN (for image/video/url with preview):
+┌──────────────────────────────────────────────────────┐
+│ Header: TYPE - Date                        Copy   X  │
+├──────────────────────┬───────────────────────────────┤
+│                      │  Title / Filename             │
+│   MEDIA PREVIEW      │  Description                  │
+│      (40%)           │  [Open Link] button           │
+│                      │  ─────────────────────────    │
+│                      │  AI Analysis (if any)         │
+│                      │  Tags: [tag1] [tag2] [ai]     │
+│                      │  via source                   │
+└──────────────────────┴───────────────────────────────┘
+
+1-COLUMN (for text/audio/file):
+┌──────────────────────────────────────────────────────┐
+│ Header: TYPE - Date                        Copy   X  │
+├──────────────────────────────────────────────────────┤
+│  Text content / Audio player / File info             │
+│  ──────────────────────────────────────────────────  │
+│  AI Analysis (if any)                                │
+│  Tags: [tag1] [tag2]                                │
+│  via source                                          │
+└──────────────────────────────────────────────────────┘
+```
+
+**Layout by Content Type:**
+
+| Type | Layout | Media Column |
+|------|--------|--------------|
+| Image | 2-col (40/60) | Image preview |
+| Video | 2-col (40/60) | Video player |
+| URL | 2-col (40/60) | OG image preview |
+| Text | 1-col | Paper background |
+| Audio | 1-col | Audio player icon |
+| File | 1-col | File icon + download |
+
+**Key CSS (z-index & event isolation):**
+```css
+.overlay {
+  z-index: 9999;
+  touch-action: auto !important;
+  user-select: text !important;
+  pointer-events: auto !important;
+}
+```
+
+**Event Handling:**
+```svelte
+<div class="overlay"
+  onpointerdown={(e) => e.stopPropagation()}
+  onpointermove={(e) => e.stopPropagation()}
+  onpointerup={(e) => e.stopPropagation()}
+  onwheel={(e) => e.stopPropagation()}
+>
+```
+
+**Features:**
+- Read-only (no tag editing - use Admin panel)
+- Text selectable
+- Buttons work (copy, close, open link, download)
+- Smooth scrolling for long content
+- Mobile responsive (stacks vertically < 640px)
+
+**Forbidden:** Editing tags (Admin only), Tasks display (tasks are separate posts)
+
+---
+
 ## AI Integration (Groq)
 
-**Scope:** LLM API, tag/task extraction, chat
+**Scope:** LLM API, tag/task extraction, chat, image analysis
 
 **Tech:**
 - Groq API (OpenAI-compatible)
-- Model: `llama-3.1-70b-versatile`
+- Text Model: `openai/gpt-oss-20b` (tagging, chat)
+- Vision Model: `meta-llama/llama-4-scout-17b-16e-instruct` (image OCR, descriptions)
+- Audio Model: `whisper-large-v3-turbo` (transcription)
 - ~1000 tokens/sec, behind `AI_ENABLED` toggle
 
 **Pattern:**
@@ -160,13 +251,38 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 async function suggest(content) {
   if (!process.env.AI_ENABLED) return null;
   const response = await groq.chat.completions.create({
-    model: 'llama-3.1-70b-versatile',
+    model: 'openai/gpt-oss-20b',
     messages: [{ role: 'system', content: PROMPT }, { role: 'user', content }],
     max_tokens: 200
   });
   return response.choices[0].message.content;
 }
 ```
+
+**Image Analysis (Vision):**
+```javascript
+async function analyzeImage(imageUrl) {
+  const response = await groq.chat.completions.create({
+    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: VISION_PROMPT },
+        { type: 'image_url', image_url: { url: imageUrl } }
+      ]
+    }],
+    max_tokens: 1000
+  });
+  // Returns: { description, ocrText, suggestedTags }
+}
+```
+
+**AI Metadata Fields:**
+- `metadata.aiDescription` - AI-generated description of image content
+- `metadata.ocrText` - Extracted text from image (receipts, screenshots, documents)
+- `metadata.aiSummary` - AI summary of text/URL/audio content
+- `metadata.transcription` - Audio transcription
+- `tags.is_ai_suggested` - Boolean flag for AI-generated tags
 
 **Safety:** Sanitize inputs, validate JSON outputs, rate limit, 10s timeout
 
@@ -191,6 +307,26 @@ ORDER BY score DESC LIMIT 20;
 ```
 
 **Behavior:** Search returns coordinates → camera teleports → highlights matches
+
+---
+
+## Admin Panel
+
+**Scope:** Content management, tag management, system maintenance
+
+**File:** `frontend/src/views/Admin.svelte`
+
+**Tabs:**
+1. **Posts** - Search, filter, edit, delete posts
+2. **Trash** - Restore or permanently delete
+3. **Tags** - Rename, merge, delete tags
+4. **System** - Stats, database optimize, export
+
+**Features:**
+- Password protected (ADMIN_PASSWORD or PASSWORD env)
+- Mobile responsive (card layout on small screens)
+- Bulk operations (select multiple posts)
+- Tag editing (only place to add/remove tags)
 
 ---
 

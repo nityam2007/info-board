@@ -442,7 +442,7 @@ async function createTextPost(content) {
   const response = await apiRequest('/api/posts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content })
+    body: JSON.stringify({ content, source: 'mobile' })
   });
   
   return response.ok;
@@ -452,7 +452,7 @@ async function createUrlPost(url) {
   const response = await apiRequest('/api/upload/url', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url })
+    body: JSON.stringify({ url, source: 'mobile' })
   });
   
   return response.ok;
@@ -469,9 +469,10 @@ async function createFilePost(file) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            file: base64,  // Backend expects 'file', not 'data'
             filename: file.name,
-            data: base64,
-            mimeType: file.type
+            mimeType: file.type || 'application/octet-stream',
+            source: 'mobile'
           })
         });
         resolve(response.ok);

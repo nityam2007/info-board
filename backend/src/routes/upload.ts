@@ -4,7 +4,7 @@ import { join } from 'path';
 import { uploadService, getContentTypeFromMime } from '../services/upload.js';
 import { postsService } from '../services/posts.js';
 import { tagsService } from '../services/tags.js';
-import { analyzeImageBase64, transcribeAudio } from '../services/ai.js';
+import { analyzeImageBase64, analyzeImage, analyzeAudio, analyzeUrl } from '../services/ai.js';
 import { CONFIG } from '../config.js';
 
 export const uploadRouter: RouterType = Router();
@@ -40,7 +40,7 @@ uploadRouter.post('/', async (req, res) => {
     }
     
     // Initialize AI analysis results
-    let aiAnalysis: { ocrText?: string; description?: string; tags?: string[] } = {};
+    let aiAnalysis: { ocrText?: string; description?: string; tags?: string[]; transcription?: string; summary?: string } = {};
     
     // Auto-analyze images with AI (OCR + description + tags)
     if (contentType === 'image' && CONFIG.AI_ENABLED) {
@@ -62,6 +62,31 @@ uploadRouter.post('/', async (req, res) => {
       }
     }
     
+    // Auto-analyze audio with AI (transcription + tags)
+    if (contentType === 'audio' && CONFIG.AI_ENABLED) {
+      try {
+        // Get the filepath - files are saved in YYYY/MM folders
+        const now = new Date();
+        const year = now.getFullYear().toString();
+        const month = (now.getMonth() + 1).toString().padStart(2, '0');
+        const filepath = join(CONFIG.UPLOADS_PATH, year, month, fileMetadata.filename);
+        console.log('Analyzing audio with AI...');
+        const analysis = await analyzeAudio(filepath);
+        aiAnalysis = {
+          transcription: analysis.transcription || undefined,
+          summary: analysis.summary || undefined,
+          tags: analysis.tags?.length ? analysis.tags : undefined,
+        };
+        console.log('Audio analysis complete:', {
+          hasTranscription: !!aiAnalysis.transcription,
+          hasSummary: !!aiAnalysis.summary,
+          tagCount: aiAnalysis.tags?.length || 0,
+        });
+      } catch (err) {
+        console.error('Audio analysis failed (non-fatal):', err);
+      }
+    }
+    
     // Create post with file reference and AI analysis
     const post = postsService.create({
       content: filename,
@@ -72,6 +97,8 @@ uploadRouter.post('/', async (req, res) => {
         // AI-generated fields
         ocrText: aiAnalysis.ocrText,
         aiDescription: aiAnalysis.description,
+        transcription: aiAnalysis.transcription,
+        aiSummary: aiAnalysis.summary,
       },
     });
     
@@ -116,6 +143,64 @@ uploadRouter.post('/url', async (req, res) => {
     // Extract metadata with OG image caching
     const metadata = await uploadService.extractUrlMetadata(url);
     
+    // AI analysis for URL (tags based on title/description)
+    let aiAnalysis: { tags?: string[]; summary?: string; imageAnalysis?: { ocrText?: string; description?: string } } = {};
+    if (CONFIG.AI_ENABLED) {
+      try {
+        console.log('Analyzing URL with AI...');
+        const analysis = await analyzeUrl(
+          metadata.title || '',
+          metadata.description || '',
+          url
+        );
+        aiAnalysis = {
+          tags: analysis.tags?.length ? analysis.tags : undefined,
+          summary: analysis.summary || undefined,
+        };
+        console.log('URL analysis complete:', {
+          tagCount: aiAnalysis.tags?.length || 0,
+          hasSummary: !!aiAnalysis.summary,
+        });
+        
+        // For YouTube and Reddit: also analyze the cached thumbnail/image with vision AI
+        const platform = (metadata as any).platform;
+        if ((platform === 'youtube' || platform === 'reddit') && metadata.ogImageLocal) {
+          try {
+            const now = new Date();
+            const year = now.getFullYear().toString();
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const imagePath = join(CONFIG.UPLOADS_PATH, year, month, metadata.ogImageLocal);
+            
+            if (existsSync(imagePath)) {
+              console.log(`Analyzing ${platform} image with vision AI...`);
+              const imgAnalysis = await analyzeImage(imagePath);
+              aiAnalysis.imageAnalysis = {
+                ocrText: imgAnalysis.ocrText || undefined,
+                description: imgAnalysis.description || undefined,
+              };
+              // Merge image tags with URL tags
+              if (imgAnalysis.tags?.length) {
+                const existingTags = new Set(aiAnalysis.tags || []);
+                for (const tag of imgAnalysis.tags) {
+                  existingTags.add(tag);
+                }
+                aiAnalysis.tags = Array.from(existingTags);
+              }
+              console.log(`${platform} image analysis complete:`, {
+                hasOcr: !!aiAnalysis.imageAnalysis.ocrText,
+                hasDescription: !!aiAnalysis.imageAnalysis.description,
+                totalTags: aiAnalysis.tags?.length || 0,
+              });
+            }
+          } catch (imgErr) {
+            console.error(`${platform} image analysis failed (non-fatal):`, imgErr);
+          }
+        }
+      } catch (err) {
+        console.error('URL analysis failed (non-fatal):', err);
+      }
+    }
+    
     // Create post
     const post = postsService.create({
       content: url,
@@ -129,8 +214,30 @@ uploadRouter.post('/url', async (req, res) => {
         ogImageLocal: metadata.ogImageLocal,
         favicon: metadata.favicon,
         siteName: metadata.siteName,
+        author: (metadata as any).author,
+        platform: (metadata as any).platform,
+        subreddit: (metadata as any).subreddit,
+        score: (metadata as any).score,
+        aiSummary: aiAnalysis.summary,
+        ocrText: aiAnalysis.imageAnalysis?.ocrText,
+        aiDescription: aiAnalysis.imageAnalysis?.description,
       },
     });
+    
+    // Auto-add AI-suggested tags
+    if (aiAnalysis.tags?.length) {
+      for (const tagName of aiAnalysis.tags) {
+        try {
+          tagsService.create({
+            post_id: post.id,
+            name: tagName,
+            is_ai_suggested: true,
+          });
+        } catch (err) {
+          console.error(`Failed to add tag "${tagName}":`, err);
+        }
+      }
+    }
     
     res.status(201).json({ success: true, data: post });
   } catch (error) {

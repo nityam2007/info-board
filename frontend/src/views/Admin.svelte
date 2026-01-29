@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type Post, type AdminStats, type AdminTag } from '$lib/api';
+  import { Eye, FileSearch, Bot } from 'lucide-svelte';
   
   // Props
   interface Props {
@@ -750,6 +751,33 @@
             <p><strong>Created:</strong> {formatDate(editingPost.created_at)}</p>
             <p><strong>Source:</strong> {editingPost.source}</p>
           </div>
+          
+          {#if editingPost.metadata?.aiDescription || editingPost.metadata?.ocrText}
+            <div class="ai-metadata-section">
+              <h4 class="ai-section-header">
+                <Bot size={14} />
+                AI Analysis
+              </h4>
+              {#if editingPost.metadata?.aiDescription}
+                <div class="ai-metadata-item">
+                  <label>
+                    <Eye size={12} />
+                    AI Description
+                  </label>
+                  <p class="ai-description">{editingPost.metadata.aiDescription}</p>
+                </div>
+              {/if}
+              {#if editingPost.metadata?.ocrText}
+                <div class="ai-metadata-item">
+                  <label>
+                    <FileSearch size={12} />
+                    Extracted Text (OCR)
+                  </label>
+                  <pre class="ocr-text">{editingPost.metadata.ocrText}</pre>
+                </div>
+              {/if}
+            </div>
+          {/if}
         </div>
         <div class="modal-footer">
           <button class="btn" onclick={() => editingPost = null}>Cancel</button>
@@ -1415,6 +1443,69 @@
   
   .form-info p {
     margin: 4px 0;
+  }
+  
+  /* AI Metadata Section */
+  .ai-metadata-section {
+    margin-top: 16px;
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 12px;
+  }
+  
+  .ai-section-header {
+    font-size: 12px;
+    font-weight: 600;
+    color: #a78bfa;
+    margin: 0 0 16px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  
+  .ai-metadata-item {
+    margin-bottom: 16px;
+  }
+  
+  .ai-metadata-item:last-child {
+    margin-bottom: 0;
+  }
+  
+  .ai-metadata-item label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #a78bfa;
+    margin-bottom: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  
+  .ai-description {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--color-fg, #fafafa);
+    margin: 0;
+  }
+  
+  .ocr-text {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 12px;
+    border-radius: 6px;
+    color: var(--color-fg, #fafafa);
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    max-height: 200px;
+    overflow-y: auto;
   }
   
   /* Auth Styles */

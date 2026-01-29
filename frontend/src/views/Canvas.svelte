@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api, type Post } from '$lib/api';
+  import PostDetail from '../components/PostDetail.svelte';
   import { 
     Search, ChevronLeft, Loader2, Bot, X, Home, HelpCircle,
     FileText, Image as ImageIcon, Music, Video, Link2, Paperclip,
-    Calendar, ExternalLink, ZoomIn, ZoomOut, Compass
+    Calendar, ExternalLink, ZoomIn, ZoomOut, Compass, Eye, FileSearch
   } from 'lucide-svelte';
 
   interface Props {
@@ -214,13 +215,17 @@
   function handlePointerDown(e: PointerEvent) {
     if (e.button !== 0) return; // Left click only
     
+    // Don't capture events if modal is open
+    if (selectedPost || showHelp) return;
+    
     // Don't start drag if clicking on UI elements or cards
     const target = e.target as HTMLElement;
     if (target.closest('.floating-header') || 
         target.closest('.floating-controls') || 
         target.closest('.zoom-indicator') ||
         target.closest('.world-post') ||
-        target.closest('.modal-overlay')) {
+        target.closest('.modal-overlay') ||
+        target.closest('.overlay')) {
       return;
     }
     
@@ -242,6 +247,8 @@
 
   function handlePointerMove(e: PointerEvent) {
     if (!isDragging) return;
+    // Don't process if modal is open
+    if (selectedPost || showHelp) return;
     
     const dx = e.clientX - dragStart.x;
     const dy = e.clientY - dragStart.y;
@@ -270,6 +277,9 @@
   }
 
   function handleWheel(e: WheelEvent) {
+    // Don't zoom if modal is open
+    if (selectedPost || showHelp) return;
+    
     e.preventDefault();
     
     const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
@@ -854,71 +864,7 @@
 
   <!-- Post Detail Modal -->
   {#if selectedPost}
-    {@const mediaUrl = getMediaUrl(selectedPost)}
-    {@const typeInfo = getTypeInfo(selectedPost.content_type)}
-    
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="modal-overlay" onclick={() => selectedPost = null} onkeydown={(e) => e.key === 'Escape' && (selectedPost = null)}>
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-      <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
-        <button class="modal-close" onclick={() => selectedPost = null}>
-          <X size={20} />
-        </button>
-        
-        {#if selectedPost.content_type === 'image' || selectedPost.content_type === 'video'}
-          <div class="modal-media">
-            {#if selectedPost.content_type === 'video' && mediaUrl}
-              <!-- svelte-ignore a11y_media_has_caption -->
-              <video src={mediaUrl} controls></video>
-            {:else if mediaUrl}
-              <img src={mediaUrl} alt="" />
-            {/if}
-          </div>
-        {:else if selectedPost.content_type === 'url'}
-          {#if mediaUrl}
-            <div class="modal-media url-preview">
-              <img src={mediaUrl} alt="" />
-            </div>
-          {/if}
-          <div class="modal-body">
-            <h2>{selectedPost.metadata?.title || 'Link'}</h2>
-            {#if selectedPost.metadata?.description}
-              <p class="modal-desc">{selectedPost.metadata.description}</p>
-            {/if}
-            <a href={selectedPost.content} target="_blank" rel="noopener noreferrer" class="modal-link">
-              <ExternalLink size={14} />
-              {selectedPost.content}
-            </a>
-          </div>
-        {:else if selectedPost.content_type === 'text'}
-          <div class="modal-body text-modal">
-            <p>{selectedPost.content}</p>
-          </div>
-        {:else if selectedPost.content_type === 'audio'}
-          <div class="modal-body">
-            {#if mediaUrl}
-              <audio src={mediaUrl} controls class="modal-audio"></audio>
-            {/if}
-            <p class="modal-filename">{selectedPost.metadata?.originalName || 'Audio file'}</p>
-          </div>
-        {:else}
-          <div class="modal-body file-modal">
-            <Paperclip size={32} />
-            <p class="modal-filename">{selectedPost.metadata?.originalName || selectedPost.content}</p>
-          </div>
-        {/if}
-        
-        <div class="modal-footer">
-          <div class="modal-type" style="color: {typeInfo.color}">
-            <span>{typeInfo.label}</span>
-          </div>
-          <span class="modal-date">
-            <Calendar size={12} />
-            {new Date(selectedPost.created_at).toLocaleString()}
-          </span>
-        </div>
-      </div>
-    </div>
+    <PostDetail post={selectedPost} onclose={() => selectedPost = null} />
   {/if}
 </div>
 
@@ -1601,6 +1547,55 @@
     gap: 6px;
     font-size: 12px;
     color: var(--color-muted, #71717a);
+  }
+
+  /* Modal AI Section */
+  .modal-ai-section {
+    padding: 16px 24px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(99, 102, 241, 0.08) 100%);
+    border-top: 1px solid rgba(139, 92, 246, 0.2);
+  }
+
+  .ai-item {
+    margin-bottom: 16px;
+  }
+
+  .ai-item:last-child {
+    margin-bottom: 0;
+  }
+
+  .ai-item h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: #a78bfa;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .ai-item p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--color-fg, #fafafa);
+    line-height: 1.6;
+  }
+
+  .modal-ai-section .ocr-text {
+    margin: 0;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 8px;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 12px;
+    color: var(--color-fg, #fafafa);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 150px;
+    overflow-y: auto;
   }
 
   /* Animations */

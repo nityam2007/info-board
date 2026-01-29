@@ -18,6 +18,10 @@
 - [2026-01-29] Over-engineered card aspect ratio when user only asked for zoom limit change
 - [2026-01-29] Set sphere radius too small (55%) - should be 80% to fill more screen
 - [2026-01-29] Documentation still said "flat masonry" after implementing 3D globe effect
+- [2026-01-29] PostDetail modal inside Canvas inherited `user-select: none` and `touch-action: none` - buttons didn't work
+- [2026-01-29] Canvas pointer handlers kept capturing events even when modal was open - background scrolled while modal displayed
+- [2026-01-29] Modal z-index 1000 wasn't enough when nested inside Canvas - needed 9999 + `!important` overrides
+- [2026-01-29] Download button was created with no onclick handler - completely non-functional
 
 ## Key Learnings
 
@@ -26,3 +30,12 @@
 3. **Globe sphere radius** - Use 80% of viewport for good coverage
 4. **Min zoom** - 60% is a good limit (cards stay readable)
 5. **Search lives on Canvas** - InputHome is capture-only, no search
+6. **Modal isolation** - When modal is inside a container with restricted events:
+   - Use `z-index: 9999` with `!important`
+   - Add `touch-action: auto !important`
+   - Add `user-select: text !important`
+   - Add `pointer-events: auto !important`
+   - Stop propagation on pointer/wheel events
+   - Parent handlers must check if modal is open before processing
+7. **Always test buttons** - Every button must have an onclick handler
+8. **Tags are read-only in PostDetail** - Editing happens in Admin panel

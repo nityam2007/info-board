@@ -2,6 +2,8 @@ import { Router, type Router as RouterType } from 'express';
 import { postsService } from '../services/posts.js';
 import { tagsService } from '../services/tags.js';
 import { tasksService } from '../services/tasks.js';
+import { analyzeText } from '../services/ai.js';
+import { CONFIG } from '../config.js';
 import type { CreatePostRequest } from '../types.js';
 
 export const postsRouter: RouterType = Router();
@@ -25,7 +27,54 @@ postsRouter.post('/', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Content is required' });
     }
     
-    const post = postsService.create(data);
+    // Default to text type if not specified
+    const contentType = data.content_type || 'text';
+    
+    // AI analysis for text posts
+    let aiAnalysis: { tags?: string[]; summary?: string } = {};
+    
+    if (contentType === 'text' && CONFIG.AI_ENABLED) {
+      try {
+        console.log('Analyzing text with AI...');
+        const analysis = await analyzeText(data.content);
+        aiAnalysis = {
+          tags: analysis.tags?.length ? analysis.tags : undefined,
+          summary: analysis.summary || undefined,
+        };
+        console.log('Text analysis complete:', {
+          tagCount: aiAnalysis.tags?.length || 0,
+          hasSummary: !!aiAnalysis.summary,
+        });
+      } catch (err) {
+        console.error('Text analysis failed (non-fatal):', err);
+      }
+    }
+    
+    // Create post with AI summary in metadata
+    const post = postsService.create({
+      ...data,
+      content_type: contentType,
+      metadata: {
+        ...data.metadata,
+        aiSummary: aiAnalysis.summary,
+      },
+    });
+    
+    // Auto-add AI-suggested tags
+    if (aiAnalysis.tags?.length) {
+      for (const tagName of aiAnalysis.tags) {
+        try {
+          tagsService.create({
+            post_id: post.id,
+            name: tagName,
+            is_ai_suggested: true,
+          });
+        } catch (err) {
+          console.error(`Failed to add tag "${tagName}":`, err);
+        }
+      }
+    }
+    
     res.status(201).json({ success: true, data: post });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });

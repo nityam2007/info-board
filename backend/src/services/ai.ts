@@ -1,6 +1,7 @@
 import { Groq } from 'groq-sdk';
 import { CONFIG } from '../config.js';
 import { readFileSync } from 'fs';
+import sharp from 'sharp';
 
 // Initialize Groq client
 const groq = new Groq({
@@ -10,7 +11,8 @@ const groq = new Groq({
 // Text model for general tasks
 const TEXT_MODEL = 'openai/gpt-oss-20b';
 
-// Vision model for image analysis (Llama 4 Scout - faster, good quality)
+// Vision model for image analysis (Llama 4 Scout - faster, 750 T/sec, 16 experts)
+// NOTE: Must be enabled in Groq console at https://console.groq.com/settings/limits
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
 interface Message {
@@ -129,16 +131,30 @@ export async function analyzeImage(imagePath: string): Promise<{
   }
 
   try {
-    // Read image and convert to base64
+    // Read image and detect actual format using sharp
     const imageBuffer = readFileSync(imagePath);
-    const base64Image = imageBuffer.toString('base64');
+    const metadata = await sharp(imageBuffer).metadata();
+    const actualFormat = metadata.format; // 'jpeg', 'png', 'webp', 'gif', 'avif', 'heif', etc.
     
-    // Detect mime type from extension
-    const ext = imagePath.toLowerCase().split('.').pop();
-    const mimeType = ext === 'png' ? 'image/png' 
-      : ext === 'gif' ? 'image/gif'
-      : ext === 'webp' ? 'image/webp'
-      : 'image/jpeg';
+    let base64Image: string;
+    let mimeType: string;
+    
+    // Convert unsupported formats (AVIF, HEIF) to PNG
+    // Groq vision API supports: jpeg, png, gif, webp
+    if (actualFormat === 'avif' || actualFormat === 'heif') {
+      console.log(`   Converting ${actualFormat.toUpperCase()} to PNG for API compatibility`);
+      const pngBuffer = await sharp(imageBuffer).png().toBuffer();
+      base64Image = pngBuffer.toString('base64');
+      mimeType = 'image/png';
+    } else {
+      base64Image = imageBuffer.toString('base64');
+      // Map sharp format to mime type
+      mimeType = actualFormat === 'jpeg' ? 'image/jpeg'
+        : actualFormat === 'png' ? 'image/png'
+        : actualFormat === 'gif' ? 'image/gif'
+        : actualFormat === 'webp' ? 'image/webp'
+        : 'image/png'; // Default to PNG for unknown
+    }
     
     const imageUrl = `data:${mimeType};base64,${base64Image}`;
 
@@ -293,5 +309,140 @@ If you can't answer from the context, say so.`;
   } catch (error) {
     console.error('Chat failed:', error);
     throw error;
+  }
+}
+
+// Analyze text content for auto-tagging and summary
+export async function analyzeText(content: string): Promise<{
+  tags: string[];
+  summary: string;
+}> {
+  if (!CONFIG.AI_ENABLED || !CONFIG.GROQ_API_KEY) {
+    return { tags: [], summary: '' };
+  }
+
+  try {
+    const systemPrompt = `You are a content analyzer. Analyze the text and provide:
+1. 3-5 relevant tags for categorizing this content (lowercase, hyphenated for multi-word)
+2. A brief 1-sentence summary
+
+Return your response in this exact JSON format:
+{
+  "tags": ["tag1", "tag2", "tag3"],
+  "summary": "Brief summary of the content"
+}
+
+Return ONLY valid JSON, nothing else.`;
+
+    const response = await callGroq([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Analyze this text:\n\n${content.slice(0, 2000)}` },
+    ]);
+
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+        summary: parsed.summary || '',
+      };
+    }
+
+    return { tags: [], summary: '' };
+  } catch (error) {
+    console.error('Text analysis failed:', error);
+    return { tags: [], summary: '' };
+  }
+}
+
+// Analyze URL content for auto-tagging
+export async function analyzeUrl(title: string, description: string, url: string): Promise<{
+  tags: string[];
+  summary: string;
+}> {
+  if (!CONFIG.AI_ENABLED || !CONFIG.GROQ_API_KEY) {
+    return { tags: [], summary: '' };
+  }
+
+  try {
+    // Extract domain for context
+    let domain = '';
+    try {
+      domain = new URL(url).hostname.replace('www.', '');
+    } catch {}
+
+    const systemPrompt = `You are a content analyzer for saved links/bookmarks. Analyze the URL metadata and provide:
+1. 3-5 relevant tags for categorizing this link (lowercase, hyphenated for multi-word)
+2. A brief 1-sentence summary if title/description are meaningful
+
+Consider the source domain when suggesting tags (e.g., youtube -> video, github -> code, twitter -> social).
+
+Return your response in this exact JSON format:
+{
+  "tags": ["tag1", "tag2", "tag3"],
+  "summary": "Brief summary or empty string"
+}
+
+Return ONLY valid JSON, nothing else.`;
+
+    const userContent = `URL: ${url}
+Domain: ${domain}
+Title: ${title || 'No title'}
+Description: ${description || 'No description'}`;
+
+    const response = await callGroq([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ]);
+
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+        summary: parsed.summary || '',
+      };
+    }
+
+    return { tags: [], summary: '' };
+  } catch (error) {
+    console.error('URL analysis failed:', error);
+    return { tags: [], summary: '' };
+  }
+}
+
+// Analyze audio: transcribe + extract tags
+export async function analyzeAudio(audioPath: string): Promise<{
+  transcription: string;
+  tags: string[];
+  summary: string;
+}> {
+  if (!CONFIG.AI_ENABLED || !CONFIG.GROQ_API_KEY) {
+    return { transcription: '', tags: [], summary: '' };
+  }
+
+  try {
+    // First transcribe
+    console.log('   Transcribing audio...');
+    const transcription = await transcribeAudio(audioPath);
+    
+    if (!transcription || transcription.trim().length === 0) {
+      console.log('   No transcription available');
+      return { transcription: '', tags: [], summary: '' };
+    }
+
+    console.log(`   Transcription: ${transcription.slice(0, 100)}...`);
+
+    // Then analyze the transcription for tags and summary
+    const analysis = await analyzeText(transcription);
+    
+    return {
+      transcription,
+      tags: analysis.tags,
+      summary: analysis.summary,
+    };
+  } catch (error) {
+    console.error('Audio analysis failed:', error);
+    return { transcription: '', tags: [], summary: '' };
   }
 }
