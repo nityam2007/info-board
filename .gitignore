@@ -36,3 +36,9 @@ pnpm-debug.log*
 coverage/
 .nyc_output/
 info board demo.mp4
+
+# Mobile app build artifacts
+3rd-party/mobile/android/
+3rd-party/mobile/node_modules/
+3rd-party/mobile/dist/
+3rd-party/mobile/*.apk
