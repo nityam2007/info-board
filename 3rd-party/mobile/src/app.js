@@ -19,7 +19,13 @@ const state = {
   activeTab: 'text',
   selectedFile: null,
   recentPosts: [],
-  stats: { totalPosts: 0, streak: 0, postsToday: 0 }
+  stats: {
+    totalPosts: 0,
+    streak: 0,
+    postsToday: 0,
+    postsThisWeek: 0,
+    postsByType: {}
+  }
 };
 
 // DOM Elements
@@ -55,9 +61,15 @@ function cacheElements() {
   elements.connectionError = document.getElementById('connection-error');
   elements.settingsBtn = document.getElementById('settings-btn');
   elements.serverName = document.getElementById('server-name');
+  elements.serverUrlDisplay = document.getElementById('server-url-display');
   elements.totalPosts = document.getElementById('total-posts');
   elements.streakCount = document.getElementById('streak-count');
   elements.todayCount = document.getElementById('today-count');
+  elements.weekCount = document.getElementById('week-count');
+  elements.countText = document.getElementById('count-text');
+  elements.countUrl = document.getElementById('count-url');
+  elements.countImage = document.getElementById('count-image');
+  elements.countFile = document.getElementById('count-file');
   elements.tabs = document.querySelectorAll('.tab');
   elements.captureContents = document.querySelectorAll('.capture-content');
   elements.textInput = document.getElementById('text-input');
@@ -69,6 +81,7 @@ function cacheElements() {
   elements.clearFile = document.getElementById('clear-file');
   elements.captureBtn = document.getElementById('capture-btn');
   elements.recentList = document.getElementById('recent-list');
+  elements.refreshBtn = document.getElementById('refresh-btn');
   elements.toast = document.getElementById('toast');
   elements.loading = document.getElementById('loading');
 }
@@ -101,6 +114,9 @@ function bindEvents() {
   
   // Capture
   elements.captureBtn.addEventListener('click', handleCapture);
+  
+  // Refresh button
+  elements.refreshBtn.addEventListener('click', handleRefresh);
   
   // Enter key to submit
   elements.textInput.addEventListener('keydown', (e) => {
@@ -198,20 +214,23 @@ async function testConnection(silent) {
     const response = await apiRequest('/api/posts/stats');
     
     if (response.ok) {
-      const data = await response.json();
-      state.stats = data;
+      const result = await response.json();
+      // Handle both response formats: { data: {...} } or direct {...}
+      state.stats = result.data || result;
       state.connected = true;
       await saveSettings();
       showMainScreen();
       updateStats();
       loadRecentPosts();
+    } else if (response.status === 401) {
+      throw new Error('Authentication failed - check password');
     } else {
       throw new Error('Invalid response from server');
     }
   } catch (error) {
     console.error('Connection error:', error);
     if (!silent) {
-      elements.connectionError.textContent = 'Could not connect. Check URL and password.';
+      elements.connectionError.textContent = error.message || 'Could not connect. Check URL and password.';
       elements.connectionError.hidden = false;
     }
     showSettings();
@@ -251,26 +270,76 @@ function showMainScreen() {
   elements.settingsScreen.hidden = true;
   elements.mainScreen.hidden = false;
   
-  // Update server name display
+  // Update server name and URL display
   try {
     const url = new URL(state.serverUrl);
     elements.serverName.textContent = url.hostname;
+    elements.serverUrlDisplay.textContent = state.serverUrl;
   } catch {
     elements.serverName.textContent = 'Info Board';
+    elements.serverUrlDisplay.textContent = state.serverUrl;
   }
 }
 
 // Stats
 function updateStats() {
-  elements.totalPosts.textContent = formatNumber(state.stats.totalPosts || 0);
-  elements.streakCount.textContent = state.stats.streak || 0;
-  elements.todayCount.textContent = state.stats.postsToday || 0;
+  const stats = state.stats;
+  
+  // Main stats
+  elements.totalPosts.textContent = formatNumber(stats.totalPosts || 0);
+  elements.streakCount.textContent = stats.streak || 0;
+  elements.todayCount.textContent = stats.postsToday || 0;
+  elements.weekCount.textContent = stats.postsThisWeek || 0;
+  
+  // Stats by type
+  const byType = stats.postsByType || {};
+  
+  // Count text posts
+  const textCount = byType['text'] || 0;
+  elements.countText.textContent = formatNumber(textCount);
+  
+  // Count URL posts
+  const urlCount = byType['text/x-url'] || 0;
+  elements.countUrl.textContent = formatNumber(urlCount);
+  
+  // Count image posts (sum all image/* types)
+  let imageCount = 0;
+  Object.keys(byType).forEach(type => {
+    if (type.startsWith('image/')) {
+      imageCount += byType[type];
+    }
+  });
+  elements.countImage.textContent = formatNumber(imageCount);
+  
+  // Count file posts (everything else)
+  let fileCount = 0;
+  Object.keys(byType).forEach(type => {
+    if (!type.startsWith('image/') && type !== 'text' && type !== 'text/x-url') {
+      fileCount += byType[type];
+    }
+  });
+  elements.countFile.textContent = formatNumber(fileCount);
 }
 
 function formatNumber(num) {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
   return num.toString();
+}
+
+// Refresh
+async function handleRefresh() {
+  elements.refreshBtn.classList.add('loading');
+  
+  try {
+    await refreshStats();
+    await loadRecentPosts();
+    showToast('Refreshed!');
+  } catch (e) {
+    showToast('Failed to refresh', true);
+  } finally {
+    elements.refreshBtn.classList.remove('loading');
+  }
 }
 
 // Tabs
@@ -421,7 +490,8 @@ async function refreshStats() {
   try {
     const response = await apiRequest('/api/posts/stats');
     if (response.ok) {
-      state.stats = await response.json();
+      const result = await response.json();
+      state.stats = result.data || result;
       updateStats();
     }
   } catch (e) {
@@ -434,9 +504,12 @@ async function loadRecentPosts() {
   try {
     const response = await apiRequest('/api/posts?limit=10');
     if (response.ok) {
-      const data = await response.json();
-      state.recentPosts = data.posts || [];
-      renderRecentPosts();
+      const result = await response.json();
+      // Handle both response formats
+      state.recentPosts = result.data || result.posts || result || [];
+      if (Array.isArray(state.recentPosts)) {
+        renderRecentPosts();
+      }
     }
   } catch (e) {
     console.error('Failed to load recent posts:', e);
@@ -467,7 +540,7 @@ function renderRecentPosts() {
           <div class="recent-text">${escapeHtml(text)}</div>
           <div class="recent-meta">${time}</div>
         </div>
-        ${thumb ? `<img class="recent-thumb" src="${thumb}" alt="">` : ''}
+        ${thumb ? `<img class="recent-thumb" src="${thumb}" alt="" onerror="this.style.display='none'">` : ''}
       </div>
     `;
   }).join('');
@@ -484,9 +557,20 @@ function getPostIcon(contentType) {
 }
 
 function getPostPreview(post) {
-  if (post.content_type === 'text/x-url' && post.metadata?.title) {
-    return post.metadata.title;
+  // For URLs, show the title from metadata
+  if (post.content_type === 'text/x-url') {
+    const metadata = typeof post.metadata === 'string' ? JSON.parse(post.metadata) : post.metadata;
+    if (metadata?.title) return metadata.title;
+    if (metadata?.url) return metadata.url;
   }
+  
+  // For images/files, show filename
+  if (post.content_type?.startsWith('image/') || post.content_type?.startsWith('video/') || post.content_type?.startsWith('audio/')) {
+    const metadata = typeof post.metadata === 'string' ? JSON.parse(post.metadata) : post.metadata;
+    if (metadata?.originalName) return metadata.originalName;
+    if (metadata?.filename) return metadata.filename;
+  }
+  
   return post.content?.substring(0, 100) || 'No content';
 }
 
@@ -494,9 +578,14 @@ function getPostThumbnail(post) {
   if (post.content_type?.startsWith('image/') && post.content) {
     return `${state.serverUrl}/uploads/${post.content}`;
   }
-  if (post.metadata?.thumbnail) {
-    return post.metadata.thumbnail;
+  
+  // Check for URL thumbnails
+  if (post.content_type === 'text/x-url') {
+    const metadata = typeof post.metadata === 'string' ? JSON.parse(post.metadata) : post.metadata;
+    if (metadata?.thumbnail) return metadata.thumbnail;
+    if (metadata?.favicon) return metadata.favicon;
   }
+  
   return null;
 }
 

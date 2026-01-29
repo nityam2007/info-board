@@ -93,22 +93,18 @@ body {
   margin-bottom: 40px;
 }
 
-.logo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 8px;
+.logo-image {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-lg);
 }
 
-.logo-icon {
-  font-size: 40px;
-}
-
-.logo h1 {
+.settings-header h1 {
   font-size: 28px;
   font-weight: 700;
   letter-spacing: -0.5px;
+  margin-bottom: 8px;
 }
 
 .subtitle {
@@ -260,23 +256,41 @@ textarea::placeholder {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
-.logo-icon-small {
-  font-size: 24px;
+.header-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+}
+
+.header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .server-name {
   font-weight: 600;
-  font-size: 17px;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.server-url {
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Stats Bar */
 .stats-bar {
   display: flex;
   justify-content: space-around;
-  padding: 16px;
+  padding: 12px 16px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
 }
@@ -288,17 +302,64 @@ textarea::placeholder {
   gap: 2px;
 }
 
+.stat-primary .stat-value {
+  color: var(--accent);
+}
+
+.stat-streak .stat-value {
+  color: var(--warning);
+}
+
 .stat-value {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
 }
 
 .stat-label {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* Stats By Type */
+.stats-by-type {
+  display: flex;
+  justify-content: space-around;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+
+.type-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  transition: background 0.2s;
+}
+
+.type-stat:active {
+  background: var(--bg-elevated);
+}
+
+.type-icon {
+  font-size: 20px;
+}
+
+.type-count {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.type-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
 }
 
 /* Capture Area */
@@ -460,13 +521,42 @@ textarea::placeholder {
   padding: 0 16px 16px;
 }
 
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
 .section-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 12px;
+}
+
+.refresh-btn {
+  background: transparent;
+  border: none;
+  padding: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.refresh-btn:active {
+  transform: rotate(180deg);
+}
+
+.refresh-btn.loading {
+  animation: spin 1s linear infinite;
 }
 
 .recent-list {
