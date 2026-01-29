@@ -4,6 +4,39 @@
 
 ---
 
+## [2026-01-29] - AI Image Analysis (OCR + Description)
+
+### Added
+
+**Image Analysis with Llama 4 Vision**
+- Auto-analyze uploaded images using `meta-llama/llama-4-scout-17b-16e-instruct` vision model
+- Extract OCR text from images (receipts, screenshots, documents, memes)
+- Generate AI description of image content
+- Auto-tag images based on visual content
+- Results stored in metadata: `ocrText`, `aiDescription`
+
+**Enhanced Search**
+- Search now includes image OCR text and AI descriptions
+- Find images by searching for text visible in them
+- Search URL titles and descriptions
+- 5-field search: content, ocrText, aiDescription, title, description
+
+**Audio Transcription (Whisper)**
+- Added `transcribeAudio()` using `whisper-large-v3-turbo`
+- Placeholder for future audio file transcription
+
+### Files Modified
+- `backend/src/services/ai.ts` - Added `analyzeImage()`, `analyzeImageBase64()`, `transcribeAudio()`, vision model support
+- `backend/src/routes/upload.ts` - Auto-analyze images on upload, add AI tags
+- `backend/src/services/search.ts` - Search in metadata fields (ocrText, aiDescription, title, description)
+
+### API Models Used
+- Text: `openai/gpt-oss-20b` (tagging, chat)
+- Vision: `meta-llama/llama-4-scout-17b-16e-instruct` (image analysis)
+- Audio: `whisper-large-v3-turbo` (transcription)
+
+---
+
 ## [2026-01-29] - Chrome Extension Image Capture Fix
 
 ### Fixed

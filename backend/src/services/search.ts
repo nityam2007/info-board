@@ -50,10 +50,17 @@ export const searchService = {
     let whereClause = `WHERE p.deleted_at IS NULL`;
     const sqlParams: any[] = [];
 
-    // Full-text search on content
+    // Full-text search on content AND metadata fields (ocrText, aiDescription, title, description)
     if (q) {
-      whereClause += ` AND p.content LIKE ?`;
-      sqlParams.push(`%${q}%`);
+      whereClause += ` AND (
+        p.content LIKE ? OR
+        json_extract(p.metadata, '$.ocrText') LIKE ? OR
+        json_extract(p.metadata, '$.aiDescription') LIKE ? OR
+        json_extract(p.metadata, '$.title') LIKE ? OR
+        json_extract(p.metadata, '$.description') LIKE ?
+      )`;
+      const searchTerm = `%${q}%`;
+      sqlParams.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     // Content type filter (supports array)
@@ -125,8 +132,16 @@ export const searchService = {
     const params: any[] = [];
     
     if (query) {
-      whereClause += ` AND content LIKE ?`;
-      params.push(`%${query}%`);
+      // Search in content AND metadata fields
+      whereClause += ` AND (
+        content LIKE ? OR
+        json_extract(metadata, '$.ocrText') LIKE ? OR
+        json_extract(metadata, '$.aiDescription') LIKE ? OR
+        json_extract(metadata, '$.title') LIKE ? OR
+        json_extract(metadata, '$.description') LIKE ?
+      )`;
+      const searchTerm = `%${query}%`;
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
     // Content type counts

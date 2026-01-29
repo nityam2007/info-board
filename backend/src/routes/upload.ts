@@ -3,6 +3,8 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { uploadService, getContentTypeFromMime } from '../services/upload.js';
 import { postsService } from '../services/posts.js';
+import { tagsService } from '../services/tags.js';
+import { analyzeImageBase64, transcribeAudio } from '../services/ai.js';
 import { CONFIG } from '../config.js';
 
 export const uploadRouter: RouterType = Router();
@@ -37,21 +39,63 @@ uploadRouter.post('/', async (req, res) => {
       }
     }
     
-    // Create post with file reference
+    // Initialize AI analysis results
+    let aiAnalysis: { ocrText?: string; description?: string; tags?: string[] } = {};
+    
+    // Auto-analyze images with AI (OCR + description + tags)
+    if (contentType === 'image' && CONFIG.AI_ENABLED) {
+      try {
+        console.log('Analyzing image with AI...');
+        const analysis = await analyzeImageBase64(file, mimeType);
+        aiAnalysis = {
+          ocrText: analysis.ocrText || undefined,
+          description: analysis.description || undefined,
+          tags: analysis.tags?.length ? analysis.tags : undefined,
+        };
+        console.log('Image analysis complete:', {
+          hasOcr: !!aiAnalysis.ocrText,
+          hasDescription: !!aiAnalysis.description,
+          tagCount: aiAnalysis.tags?.length || 0,
+        });
+      } catch (err) {
+        console.error('Image analysis failed (non-fatal):', err);
+      }
+    }
+    
+    // Create post with file reference and AI analysis
     const post = postsService.create({
       content: filename,
       content_type: contentType,
       source: source || 'upload',
       metadata: {
         ...fileMetadata,
+        // AI-generated fields
+        ocrText: aiAnalysis.ocrText,
+        aiDescription: aiAnalysis.description,
       },
     });
+    
+    // Auto-add AI-suggested tags
+    if (aiAnalysis.tags?.length) {
+      for (const tagName of aiAnalysis.tags) {
+        try {
+          tagsService.create({
+            post_id: post.id,
+            name: tagName,
+            is_ai_suggested: true,
+          });
+        } catch (err) {
+          console.error(`Failed to add tag "${tagName}":`, err);
+        }
+      }
+    }
     
     res.status(201).json({ 
       success: true, 
       data: {
         post,
         file: fileMetadata,
+        aiAnalysis: aiAnalysis.description ? aiAnalysis : undefined,
       }
     });
   } catch (error) {

@@ -1,26 +1,31 @@
 import { Groq } from 'groq-sdk';
 import { CONFIG } from '../config.js';
+import { readFileSync } from 'fs';
 
 // Initialize Groq client
 const groq = new Groq({
   apiKey: CONFIG.GROQ_API_KEY,
 });
 
-const MODEL = 'openai/gpt-oss-20b';
+// Text model for general tasks
+const TEXT_MODEL = 'openai/gpt-oss-20b';
+
+// Vision model for image analysis (Llama 4 Scout - faster, good quality)
+const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
 interface Message {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
 }
 
-async function callGroq(messages: Message[]): Promise<string> {
+async function callGroq(messages: Message[], model: string = TEXT_MODEL): Promise<string> {
   if (!CONFIG.AI_ENABLED || !CONFIG.GROQ_API_KEY) {
     throw new Error('AI is not enabled or API key is missing');
   }
 
   const chatCompletion = await groq.chat.completions.create({
-    messages,
-    model: MODEL,
+    messages: messages as any,
+    model,
     temperature: 0.3,
     max_completion_tokens: 1024,
     top_p: 1,
@@ -112,24 +117,158 @@ Generate a brief description:`;
   }
 }
 
-// Analyze image content (for OCR placeholder - would need vision model)
-export async function analyzeImage(imageUrl: string): Promise<{ text?: string; description?: string }> {
-  // Note: For real OCR, you'd use a vision model or OCR service like Tesseract
-  // Groq's GPT-OSS-20B is text-only, so this is a placeholder
-  // In production, integrate with Google Vision API, AWS Textract, or Tesseract.js
-  console.log('Image analysis requested for:', imageUrl);
-  return { 
-    text: '', 
-    description: 'Image content - OCR not available in current model' 
-  };
+// Analyze image content with vision model (OCR + description)
+export async function analyzeImage(imagePath: string): Promise<{ 
+  ocrText: string; 
+  description: string; 
+  tags: string[];
+}> {
+  if (!CONFIG.AI_ENABLED || !CONFIG.GROQ_API_KEY) {
+    console.log('AI not enabled, skipping image analysis');
+    return { ocrText: '', description: '', tags: [] };
+  }
+
+  try {
+    // Read image and convert to base64
+    const imageBuffer = readFileSync(imagePath);
+    const base64Image = imageBuffer.toString('base64');
+    
+    // Detect mime type from extension
+    const ext = imagePath.toLowerCase().split('.').pop();
+    const mimeType = ext === 'png' ? 'image/png' 
+      : ext === 'gif' ? 'image/gif'
+      : ext === 'webp' ? 'image/webp'
+      : 'image/jpeg';
+    
+    const imageUrl = `data:${mimeType};base64,${base64Image}`;
+
+    // Combined prompt for OCR, description, and tags
+    const systemPrompt = `You are an image analysis assistant. Analyze the image and provide:
+1. Any text visible in the image (OCR) - extract ALL readable text
+2. A brief description of what the image shows
+3. 3-5 relevant tags for categorizing this image
+
+Return your response in this exact JSON format:
+{
+  "ocrText": "extracted text here or empty string if no text",
+  "description": "brief description of the image",
+  "tags": ["tag1", "tag2", "tag3"]
 }
 
-// Transcribe audio content (placeholder - would need whisper or similar)
-export async function transcribeAudio(audioUrl: string): Promise<string> {
-  // Note: For real transcription, you'd use Whisper API or similar
-  // This is a placeholder for the architecture
-  console.log('Audio transcription requested for:', audioUrl);
-  return '';
+Return ONLY valid JSON, nothing else.`;
+
+    const response = await callGroq([
+      { role: 'system', content: systemPrompt },
+      { 
+        role: 'user', 
+        content: [
+          { type: 'text', text: 'Analyze this image:' },
+          { type: 'image_url', image_url: { url: imageUrl } }
+        ]
+      },
+    ], VISION_MODEL);
+
+    // Parse JSON response
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        ocrText: parsed.ocrText || '',
+        description: parsed.description || '',
+        tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+      };
+    }
+
+    console.warn('Could not parse image analysis response:', response);
+    return { ocrText: '', description: '', tags: [] };
+
+  } catch (error) {
+    console.error('Image analysis failed:', error);
+    return { ocrText: '', description: '', tags: [] };
+  }
+}
+
+// Analyze image from base64 directly (for uploads before saving)
+export async function analyzeImageBase64(base64Data: string, mimeType: string): Promise<{ 
+  ocrText: string; 
+  description: string; 
+  tags: string[];
+}> {
+  if (!CONFIG.AI_ENABLED || !CONFIG.GROQ_API_KEY) {
+    console.log('AI not enabled, skipping image analysis');
+    return { ocrText: '', description: '', tags: [] };
+  }
+
+  try {
+    const imageUrl = `data:${mimeType};base64,${base64Data}`;
+
+    const systemPrompt = `You are an image analysis assistant. Analyze the image and provide:
+1. Any text visible in the image (OCR) - extract ALL readable text
+2. A brief description of what the image shows
+3. 3-5 relevant tags for categorizing this image
+
+Return your response in this exact JSON format:
+{
+  "ocrText": "extracted text here or empty string if no text",
+  "description": "brief description of the image",
+  "tags": ["tag1", "tag2", "tag3"]
+}
+
+Return ONLY valid JSON, nothing else.`;
+
+    const response = await callGroq([
+      { role: 'system', content: systemPrompt },
+      { 
+        role: 'user', 
+        content: [
+          { type: 'text', text: 'Analyze this image:' },
+          { type: 'image_url', image_url: { url: imageUrl } }
+        ]
+      },
+    ], VISION_MODEL);
+
+    // Parse JSON response
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        ocrText: parsed.ocrText || '',
+        description: parsed.description || '',
+        tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+      };
+    }
+
+    console.warn('Could not parse image analysis response:', response);
+    return { ocrText: '', description: '', tags: [] };
+
+  } catch (error) {
+    console.error('Image analysis failed:', error);
+    return { ocrText: '', description: '', tags: [] };
+  }
+}
+
+// Transcribe audio content using Whisper
+export async function transcribeAudio(audioPath: string): Promise<string> {
+  if (!CONFIG.AI_ENABLED || !CONFIG.GROQ_API_KEY) {
+    console.log('AI not enabled, skipping audio transcription');
+    return '';
+  }
+
+  try {
+    const audioBuffer = readFileSync(audioPath);
+    const audioFile = new File([audioBuffer], 'audio.mp3', { type: 'audio/mpeg' });
+
+    const transcription = await groq.audio.transcriptions.create({
+      file: audioFile,
+      model: 'whisper-large-v3-turbo',
+      response_format: 'text',
+    });
+
+    return typeof transcription === 'string' ? transcription : (transcription as any).text || '';
+  } catch (error) {
+    console.error('Audio transcription failed:', error);
+    return '';
+  }
 }
 
 // Chat with AI about posts
