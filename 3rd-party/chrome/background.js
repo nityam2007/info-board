@@ -86,12 +86,30 @@ async function captureUrl(url, title = '', source = 'extension') {
 async function captureImage(imageUrl, pageUrl = '', source = 'extension', tabId = null) {
   try {
     let base64 = null;
-    let mimeType = 'image/png';
+    let mimeType = null;
     let filename = imageUrl.split('/').pop().split('?')[0] || 'image.png';
     
-    // Clean up filename
-    if (!filename.match(/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i)) {
+    // Clean up filename and detect mimeType from extension
+    const ext = filename.match(/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i);
+    if (!ext) {
       filename = 'image.png';
+    }
+    
+    // Detect mimeType from filename extension
+    function getMimeFromFilename(fname) {
+      const lower = fname.toLowerCase();
+      if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+      if (lower.endsWith('.png')) return 'image/png';
+      if (lower.endsWith('.gif')) return 'image/gif';
+      if (lower.endsWith('.webp')) return 'image/webp';
+      if (lower.endsWith('.svg')) return 'image/svg+xml';
+      if (lower.endsWith('.bmp')) return 'image/bmp';
+      return 'image/png';
+    }
+    
+    // Validate that mimeType is an image type
+    function isValidImageMime(mime) {
+      return mime && mime.startsWith('image/');
     }
     
     // Method 1: Try direct fetch (works for CORS-enabled images)
@@ -103,7 +121,10 @@ async function captureImage(imageUrl, pageUrl = '', source = 'extension', tabId 
       
       if (response.ok) {
         const blob = await response.blob();
-        mimeType = blob.type || 'image/png';
+        // Only use blob.type if it's a valid image type
+        if (isValidImageMime(blob.type)) {
+          mimeType = blob.type;
+        }
         base64 = await blobToBase64(blob);
       }
     } catch (e) {
@@ -120,7 +141,9 @@ async function captureImage(imageUrl, pageUrl = '', source = 'extension', tabId 
         
         if (response && response.success && response.base64) {
           base64 = response.base64;
-          mimeType = response.mimeType || 'image/png';
+          if (isValidImageMime(response.mimeType)) {
+            mimeType = response.mimeType;
+          }
         }
       } catch (e) {
         console.log('Content script capture failed:', e.message);
@@ -132,7 +155,9 @@ async function captureImage(imageUrl, pageUrl = '', source = 'extension', tabId 
       try {
         const response = await fetch(imageUrl);
         const blob = await response.blob();
-        mimeType = blob.type || 'image/png';
+        if (isValidImageMime(blob.type)) {
+          mimeType = blob.type;
+        }
         base64 = await blobToBase64(blob);
       } catch (e) {
         console.log('No-cors fetch failed:', e.message);
@@ -142,6 +167,20 @@ async function captureImage(imageUrl, pageUrl = '', source = 'extension', tabId 
     if (!base64) {
       throw new Error('Could not capture image. Try saving the image manually first.');
     }
+    
+    // Fallback: detect mimeType from filename if still not set
+    if (!mimeType) {
+      mimeType = getMimeFromFilename(filename);
+    }
+    
+    // Ensure filename extension matches mimeType
+    if (mimeType === 'image/jpeg' && !filename.match(/\.jpe?g$/i)) {
+      filename = filename.replace(/\.[^.]+$/, '') + '.jpg';
+    } else if (mimeType === 'image/png' && !filename.endsWith('.png')) {
+      filename = filename.replace(/\.[^.]+$/, '') + '.png';
+    }
+    
+    console.log('Uploading image:', { filename, mimeType, base64Length: base64.length });
     
     // Upload to Info Board
     await apiRequest('/api/upload', 'POST', {

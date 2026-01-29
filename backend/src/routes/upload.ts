@@ -22,8 +22,20 @@ uploadRouter.post('/', async (req, res) => {
     // Save file
     const fileMetadata = uploadService.saveBase64(file, filename, mimeType);
     
-    // Determine content type
-    const contentType = getContentTypeFromMime(mimeType);
+    // Determine content type - first try mimeType, then fallback to filename
+    let contentType = getContentTypeFromMime(mimeType);
+    
+    // Fallback: if mimeType didn't map to image but filename looks like an image
+    if (contentType === 'file') {
+      const lowerFilename = filename.toLowerCase();
+      if (lowerFilename.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)$/)) {
+        contentType = 'image';
+      } else if (lowerFilename.match(/\.(mp3|wav|ogg|aac|flac|m4a)$/)) {
+        contentType = 'audio';
+      } else if (lowerFilename.match(/\.(mp4|webm|mov|avi|mkv)$/)) {
+        contentType = 'video';
+      }
+    }
     
     // Create post with file reference
     const post = postsService.create({
