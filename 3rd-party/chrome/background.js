@@ -83,42 +83,96 @@ async function captureUrl(url, title = '', source = 'extension') {
   }
 }
 
-async function captureImage(imageUrl, pageUrl = '', source = 'extension') {
+async function captureImage(imageUrl, pageUrl = '', source = 'extension', tabId = null) {
   try {
-    // Fetch image and convert to base64
-    const response = await fetch(imageUrl);
-    const blob = await response.blob();
+    let base64 = null;
+    let mimeType = 'image/png';
+    let filename = imageUrl.split('/').pop().split('?')[0] || 'image.png';
     
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        try {
-          const base64 = reader.result.split(',')[1];
-          const filename = imageUrl.split('/').pop().split('?')[0] || 'image.png';
-          const mimeType = blob.type || 'image/png';
-          
-          await apiRequest('/api/upload', 'POST', {
-            file: base64,
-            filename: filename,
-            mimeType: mimeType,
-            source: source,
-            metadata: { sourceUrl: pageUrl }
-          });
-          
-          await showNotification('Captured!', 'Image saved to Info Board');
-          resolve({ success: true });
-        } catch (error) {
-          await showNotification('Capture Failed', error.message, true);
-          reject(error);
+    // Clean up filename
+    if (!filename.match(/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i)) {
+      filename = 'image.png';
+    }
+    
+    // Method 1: Try direct fetch (works for CORS-enabled images)
+    try {
+      const response = await fetch(imageUrl, {
+        mode: 'cors',
+        credentials: 'omit'
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        mimeType = blob.type || 'image/png';
+        base64 = await blobToBase64(blob);
+      }
+    } catch (e) {
+      console.log('Direct fetch failed, trying content script method:', e.message);
+    }
+    
+    // Method 2: Ask content script to capture via canvas (bypasses CORS)
+    if (!base64 && tabId) {
+      try {
+        const response = await chrome.tabs.sendMessage(tabId, {
+          action: 'captureImage',
+          imageUrl: imageUrl
+        });
+        
+        if (response && response.success && response.base64) {
+          base64 = response.base64;
+          mimeType = response.mimeType || 'image/png';
         }
-      };
-      reader.onerror = () => reject(new Error('Failed to read image'));
-      reader.readAsDataURL(blob);
+      } catch (e) {
+        console.log('Content script capture failed:', e.message);
+      }
+    }
+    
+    // Method 3: Try fetch with no-cors and blob URL
+    if (!base64) {
+      try {
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
+        mimeType = blob.type || 'image/png';
+        base64 = await blobToBase64(blob);
+      } catch (e) {
+        console.log('No-cors fetch failed:', e.message);
+      }
+    }
+    
+    if (!base64) {
+      throw new Error('Could not capture image. Try saving the image manually first.');
+    }
+    
+    // Upload to Info Board
+    await apiRequest('/api/upload', 'POST', {
+      file: base64,
+      filename: filename,
+      mimeType: mimeType,
+      source: source,
+      metadata: { sourceUrl: pageUrl, originalUrl: imageUrl }
     });
+    
+    await showNotification('Captured!', 'Image saved to Info Board');
+    return { success: true };
+    
   } catch (error) {
+    console.error('Image capture failed:', error);
     await showNotification('Capture Failed', error.message, true);
     return { success: false, error: error.message };
   }
+}
+
+// Helper to convert blob to base64
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error('Failed to read blob'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 // Context menu setup
@@ -203,7 +257,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       
     case 'capture-image':
       if (info.srcUrl) {
-        await captureImage(info.srcUrl, tab.url);
+        await captureImage(info.srcUrl, tab.url, 'extension', tab.id);
       }
       break;
       
@@ -252,7 +306,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
           
         case 'captureImage':
-          const imageResult = await captureImage(message.imageUrl, message.pageUrl, message.source || 'extension');
+          const imageResult = await captureImage(
+            message.imageUrl, 
+            message.pageUrl, 
+            message.source || 'extension',
+            sender.tab?.id
+          );
           sendResponse(imageResult);
           break;
           

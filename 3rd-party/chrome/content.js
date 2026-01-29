@@ -122,6 +122,52 @@ function getSelection() {
   return window.getSelection().toString().trim();
 }
 
+// Capture image via canvas (bypasses CORS)
+async function captureImageViaCanvas(imageUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        
+        // Try to get as original format, fallback to PNG
+        let mimeType = 'image/png';
+        if (imageUrl.match(/\.jpe?g/i)) mimeType = 'image/jpeg';
+        else if (imageUrl.match(/\.webp/i)) mimeType = 'image/webp';
+        else if (imageUrl.match(/\.gif/i)) mimeType = 'image/gif';
+        
+        const dataUrl = canvas.toDataURL(mimeType, 0.95);
+        const base64 = dataUrl.split(',')[1];
+        
+        resolve({
+          success: true,
+          base64: base64,
+          mimeType: mimeType,
+          width: img.naturalWidth,
+          height: img.naturalHeight
+        });
+      } catch (error) {
+        reject(new Error('Canvas capture failed: ' + error.message));
+      }
+    };
+    
+    img.onerror = () => {
+      reject(new Error('Failed to load image'));
+    };
+    
+    // Add cache buster to avoid cached CORS errors
+    const separator = imageUrl.includes('?') ? '&' : '?';
+    img.src = imageUrl + separator + '_t=' + Date.now();
+  });
+}
+
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.action) {
@@ -134,6 +180,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'getSelection':
       sendResponse({ text: getSelection() });
       break;
+      
+    case 'captureImage':
+      captureImageViaCanvas(message.imageUrl)
+        .then(result => sendResponse(result))
+        .catch(error => sendResponse({ success: false, error: error.message }));
+      return true; // Keep channel open for async response
       
     default:
       sendResponse({ success: false });
