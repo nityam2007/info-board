@@ -16,10 +16,17 @@
   3. No-cors fetch as last resort
 - Better error messages when all methods fail
 
+**Image type detection**
+- Validate mimeType is actually `image/*` before using (blob.type often returns empty)
+- Derive mimeType from filename extension (`.jpg` → `image/jpeg`) as fallback
+- Backend fallback: detect content type from filename if mimeType mapping fails
+- Ensures images show as "Images" not "Files" in Info Board
+
 ### Files Modified
 - `3rd-party/chrome/manifest.json` - Added `<all_urls>` permission
-- `3rd-party/chrome/background.js` - Multi-method captureImage with fallbacks
+- `3rd-party/chrome/background.js` - Multi-method captureImage, mimeType validation
 - `3rd-party/chrome/content.js` - Added captureImageViaCanvas() function
+- `backend/src/routes/upload.ts` - Filename-based content type fallback
 
 ---
 
