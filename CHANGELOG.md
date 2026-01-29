@@ -4,6 +4,29 @@
 
 ---
 
+## [2026-01-29] - Mobile App UI Improvements & PWA Icons
+
+### Added
+
+**Detailed Stats Display**
+- Posts broken down by type: Notes, Links, Images, Files
+- Refresh button to manually reload stats
+- Server URL displayed in header for clarity
+
+**PWA Icons**
+- Generated `icon-192.png` and `icon-512.png` from SVG source
+- Updated `manifest.json` with correct icon paths
+
+### Files Modified
+- `3rd-party/mobile/src/index.html` - Added stats-by-type section
+- `3rd-party/mobile/src/app.css` - Styles for type breakdown, refresh button
+- `3rd-party/mobile/src/app.js` - Display postsByType data
+- `3rd-party/mobile/src/manifest.json` - PWA icon configuration
+- `3rd-party/mobile/src/icon-192.png` (new)
+- `3rd-party/mobile/src/icon-512.png` (new)
+
+---
+
 ## [2026-01-29] - Capacitor Mobile App
 
 ### Added
